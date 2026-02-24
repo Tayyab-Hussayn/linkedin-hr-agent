@@ -1,7 +1,117 @@
-.env
+# ===============================
+# Python
+# ===============================
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
 .venv/
-data/browser-profiles/
-data/uploads/
-*.json.bak
+ENV/
+env.bak/
+venv.bak/
+
+# Distribution / Packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ===============================
+# FastAPI / App
+# ===============================
+*.log
+logs/
+*.sqlite3
+*.db
+
+# ===============================
+# Environment Variables
+# ===============================
+.env
+.env.*
+*.env
+
+# ===============================
+# Playwright
+# ===============================
+playwright-report/
+playwright/.cache/
+test-results/
+browser-storage-state.json
+
+# ===============================
+# Redis
+# ===============================
+dump.rdb
+appendonly.aof
+
+# ===============================
+# PostgreSQL
+# ===============================
+*.sql
+*.dump
+pgdata/
+
+# ===============================
+# n8n
+# ===============================
+.n8n/
+n8n/.cache/
+n8n/.config/
+
+# ===============================
+# IDE / Editor
+# ===============================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ===============================
+# OS Files
+# ===============================
+.DS_Store
+Thumbs.db
+
+# ===============================
+# Docker
+# ===============================
+*.pid
+*.seed
+*.pid.lock
+docker-compose.override.yml
+
+# ===============================
+# Coverage / Testing
+# ===============================
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# ===============================
+# Node (if using frontend or n8n locally)
+# ===============================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ===============================
+# Temporary Files
+# ===============================
+tmp/
+temp/
