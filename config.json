@@ -1,0 +1,77 @@
+{
+  "app": {
+    "name": "LinkedIn HR Agent",
+    "version": "0.1.0",
+    "environment": "development"
+  },
+
+  "ai": {
+    "provider": "ollama",
+    "ollama": {
+      "base_url": "http://host.docker.internal:11434",
+      "model": "qwen3.5:cloud"
+    },
+    "anthropic": {
+      "api_key": "",
+      "model": "claude-opus-4-5"
+    },
+    "openai": {
+      "api_key": "",
+      "model": "gpt-4o"
+    }
+  },
+
+  "database": {
+    "url": "postgresql://hrагент:changeme@localhost:5432/linkedin_agent"
+  },
+
+  "redis": {
+    "url": "redis://:changeme_redis_password@localhost:6379/0"
+  },
+
+  "n8n": {
+    "base_url": "http://localhost:5678",
+    "webhooks": {
+      "content_approval": "",
+      "engagement_trigger": "",
+      "daily_content": ""
+    }
+  },
+
+  "client": {
+    "id": "",
+    "name": "",
+    "linkedin_email": "",
+    "linkedin_password": "",
+    "timezone": "UTC",
+    "active_hours": {
+      "start": "08:00",
+      "end": "19:00"
+    }
+  },
+
+  "content_mode": "ai_suggested",
+
+  "content_strategy": {
+    "posts_per_day": 1,
+    "max_comments_per_day": 5,
+    "max_reactions_per_day": 15,
+    "post_formats": ["text", "story", "poll"],
+    "owner_sample_posts": [],
+    "owner_preferred_topics": []
+  },
+
+  "behavior": {
+    "min_delay_between_actions_seconds": 45,
+    "max_delay_between_actions_seconds": 180,
+    "typing_speed_wpm_min": 35,
+    "typing_speed_wpm_max": 65,
+    "scroll_pause_min_seconds": 2,
+    "scroll_pause_max_seconds": 8
+  },
+
+  "dashboard": {
+    "backend_url": "http://localhost:8000",
+    "secret_key": "changeme_dashboard_secret"
+  }
+}
