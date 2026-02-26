@@ -1,0 +1,17 @@
+	
+	To update user details in the database:
+
+docker exec -it la_postgres psql -U hragent -d linkedin_agent -p 5432 -c "
+UPDATE clients 
+SET linkedin_email = 'YOUR_REAL_LINKEDIN_EMAIL',
+    linkedin_password = 'YOUR_REAL_LINKEDIN_PASSWORD'
+WHERE id = 'hr-pro-001';"
+
+
+	To check posts created in the database:
+
+docker exec -it la_postgres psql -U hragent -d linkedin_agent -p 5432 -c "
+SELECT id, topic_pillar, LEFT(content, 120) as preview 
+FROM posts 
+WHERE approval_status = 'pending' 
+ORDER BY created_at DESC LIMIT 3;"
