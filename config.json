@@ -8,8 +8,8 @@
   "ai": {
     "provider": "ollama",
     "ollama": {
-      "base_url": "http://host.docker.internal:11434",
-      "model": "qwen3.5:cloud"
+      "base_url": "http://localhost:11434",
+      "model": "deepseek-v3.2:cloud"
     },
     "anthropic": {
       "api_key": "",
@@ -22,7 +22,7 @@
   },
 
   "database": {
-    "url": "postgresql://hrагент:changeme@localhost:5432/linkedin_agent"
+    "url": "postgresql+asyncpg://hrагент:changeme_strong_password@localhost:5433/linkedin_agent"
   },
 
   "redis": {
@@ -71,7 +71,7 @@
   },
 
   "dashboard": {
-    "backend_url": "http://localhost:8000",
+    "backend_url": "http://localhost:9001",
     "secret_key": "changeme_dashboard_secret"
   }
 }

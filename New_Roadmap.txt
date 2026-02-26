@@ -1,0 +1,332 @@
+New Architecture Philosophy
+n8n does everything it can. Code only where n8n physically cannot.
+Slack (user interface)
+      ↓
+n8n (orchestration + logic + DB + AI calls)
+      ↓
+Playwright Script (only for LinkedIn browser actions — unavoidable)
+      ↓
+LinkedIn
+That's it. Three layers only.
+
+What Gets Eliminated
+
+❌ FastAPI backend — gone
+❌ Alembic migrations — gone
+❌ SQLAlchemy async complexity — gone
+❌ Redis — gone (n8n handles queuing)
+❌ Python intelligence services — gone (n8n HTTP nodes call Ollama directly)
+
+
+What Stays / What's New
+
+✅ PostgreSQL — stays but n8n connects to it natively via built-in Postgres node. No ORM. Plain SQL.
+✅ n8n — does CV processing, AI calls, Slack communication, approval flows, scheduling, DB reads/writes
+✅ Playwright — one slim Python script, called by n8n via Execute Command node. Single responsibility: perform LinkedIn actions given exact instructions
+✅ Ollama — n8n calls it directly via HTTP Request node
+✅ config.json — stays as single settings file
+
+
+New Clean Stack
+n8n
+ ├── Slack trigger nodes (user input)
+ ├── Postgres nodes (data storage)
+ ├── HTTP Request nodes (Ollama AI calls)
+ ├── Execute Command nodes (trigger Playwright)
+ └── Webhook nodes (PWA dashboard approval)
+
+playwright/
+ └── linkedin_actions.py  (one file, accepts CLI args)
+
+config.json  (all settings)
+docker-compose.yml  (postgres, redis gone, just n8n + postgres)
+
+Revised Folder Structure
+linkedin-hr-agent/
+├── config.json
+├── docker-compose.yml
+├── .env
+│
+├── playwright/
+│   ├── linkedin_actions.py   # single entry point
+│   ├── humanizer.py          # delay/behavior utilities
+│   └── requirements.txt      # playwright only
+│
+└── n8n-workflows/            # exported workflow JSONs for backup
+    ├── cv_onboarding.json
+    ├── daily_content.json
+    ├── engagement.json
+    └── approval_flow.json
+That's the entire project. Lean and shippable.
+
+
+New Docker Compose
+Simplified — just PostgreSQL and n8n:
+yaml:
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: la_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: la_n8n
+    restart: unless-stopped
+    environment:
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=${POSTGRES_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - GENERIC_TIMEZONE=UTC
+      - N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true
+    volumes:
+      - n8n_data:/home/node/.n8n
+    ports:
+      - "5678:5678"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  postgres_data:
+  n8n_data:
+
+
+Database — Plain SQL, No ORM
+n8n's Postgres node runs raw SQL. We create tables once manually. That's it.
+sql:
+-- Run this once in psql or via n8n Postgres node
+
+CREATE TABLE IF NOT EXISTS clients (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  slack_user_id TEXT UNIQUE,
+  linkedin_email TEXT,
+  linkedin_password TEXT,
+  timezone TEXT DEFAULT 'UTC',
+  content_mode TEXT DEFAULT 'ai_suggested',
+  active_hours_start TEXT DEFAULT '08:00',
+  active_hours_end TEXT DEFAULT '19:00',
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS client_profiles (
+  id TEXT PRIMARY KEY,
+  client_id TEXT REFERENCES clients(id),
+  cv_raw_text TEXT,
+  headline TEXT,
+  summary TEXT,
+  experience JSONB DEFAULT '[]',
+  skills JSONB DEFAULT '[]',
+  education JSONB DEFAULT '[]',
+  tone_profile JSONB,
+  content_strategy JSONB,
+  sample_posts JSONB DEFAULT '[]',
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS posts (
+  id TEXT PRIMARY KEY,
+  client_id TEXT REFERENCES clients(id),
+  content TEXT NOT NULL,
+  post_format TEXT DEFAULT 'text',
+  topic_pillar TEXT,
+  approval_status TEXT DEFAULT 'pending',
+  post_status TEXT DEFAULT 'draft',
+  scheduled_for TIMESTAMP,
+  published_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS engagement_log (
+  id TEXT PRIMARY KEY,
+  client_id TEXT REFERENCES clients(id),
+  engagement_type TEXT,
+  target_post_url TEXT,
+  reaction_type TEXT,
+  comment_text TEXT,
+  executed_at TIMESTAMP DEFAULT NOW()
+);
+
+Save this as database/schema.sql. Run it once:
+docker exec -i la_postgres psql -U hragent -p 5432 -d linkedin_agent < database/schema.sql
+
+Playwright — One File, One Responsibility:
+# playwright/linkedin_actions.py
+"""
+Single entry point for all LinkedIn browser actions.
+Called by n8n Execute Command node with JSON args.
+
+Usage:
+  python linkedin_actions.py '{"action": "post", "content": "Hello world", "email": "x@y.com", "password": "pass"}'
+  python linkedin_actions.py '{"action": "comment", "post_url": "...", "comment": "...", "email": "...", "password": "..."}'
+  python linkedin_actions.py '{"action": "react", "post_url": "...", "reaction": "like", "email": "...", "password": "..."}'
+"""
+
+import sys
+import json
+import asyncio
+from humanizer import random_delay, human_type
+from playwright.async_api import async_playwright
+
+
+async def run(args: dict):
+    action = args.get("action")
+    email = args["email"]
+    password = args["password"]
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch_persistent_context(
+            user_data_dir=f"./profiles/{email}",
+            headless=False,
+            args=["--disable-blink-features=AutomationControlled"],
+            viewport={"width": 1280, "height": 800},
+        )
+        page = browser.pages[0] if browser.pages else await browser.new_page()
+
+        # Login if needed
+        await ensure_logged_in(page, email, password)
+
+        if action == "post":
+            await do_post(page, args["content"])
+        elif action == "comment":
+            await do_comment(page, args["post_url"], args["comment"])
+        elif action == "react":
+            await do_react(page, args["post_url"], args.get("reaction", "like"))
+
+        await browser.close()
+
+    print(json.dumps({"status": "ok", "action": action}))
+
+
+async def ensure_logged_in(page, email, password):
+    await page.goto("https://www.linkedin.com/feed/")
+    await random_delay(2, 4)
+
+    if "login" in page.url or "authwall" in page.url:
+        await page.goto("https://www.linkedin.com/login")
+        await random_delay(1, 3)
+        await human_type(page, "#username", email)
+        await random_delay(0.5, 1.5)
+        await human_type(page, "#password", password)
+        await random_delay(0.5, 1)
+        await page.click('[type="submit"]')
+        await random_delay(3, 6)
+
+
+async def do_post(page, content: str):
+    await page.goto("https://www.linkedin.com/feed/")
+    await random_delay(2, 4)
+    await page.click('[data-control-name="share.sharebox_feed_create_article"]')
+    await random_delay(1, 2)
+    # Click the post start button
+    start_button = page.locator("button.share-box-feed-entry__trigger").first
+    await start_button.click()
+    await random_delay(1, 3)
+    editor = page.locator(".ql-editor").first
+    await editor.click()
+    await human_type(page, ".ql-editor", content)
+    await random_delay(2, 4)
+    post_button = page.locator("button.share-actions__primary-action").first
+    await post_button.click()
+    await random_delay(3, 5)
+
+
+async def do_comment(page, post_url: str, comment: str):
+    await page.goto(post_url)
+    await random_delay(3, 6)
+    comment_box = page.locator(".comments-comment-box__form-container").first
+    await comment_box.click()
+    await random_delay(1, 2)
+    await human_type(page, ".ql-editor", comment)
+    await random_delay(1, 3)
+    submit = page.locator("button.comments-comment-box__submit-button").first
+    await submit.click()
+    await random_delay(2, 4)
+
+
+async def do_react(page, post_url: str, reaction: str = "like"):
+    await page.goto(post_url)
+    await random_delay(3, 6)
+    like_button = page.locator("button.react-button__trigger").first
+    await like_button.click()
+    await random_delay(2, 4)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print(json.dumps({"status": "error", "message": "No args provided"}))
+        sys.exit(1)
+
+    args = json.loads(sys.argv[1])
+    asyncio.run(run(args))
+
+# playwright/humanizer.py
+import asyncio
+import random
+
+
+async def random_delay(min_seconds: float, max_seconds: float):
+    delay = random.uniform(min_seconds, max_seconds)
+    await asyncio.sleep(delay)
+
+
+async def human_type(page, selector: str, text: str):
+    """Type text with human-like speed variance."""
+    element = page.locator(selector).first
+    await element.click()
+    for char in text:
+        await element.type(char)
+        delay = random.uniform(0.04, 0.12)  # 40-120ms between keystrokes
+        await asyncio.sleep(delay)
+
+txt: 
+# playwright/requirements.txt
+playwright==1.44.0
+
+install:
+cd playwright
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+playwright install chromium
+
+
+Next Steps
+Do this in order:
+bash# 1. Stop all containers
+docker compose down
+
+# 2. Delete the entire backend/ and intelligence/ directories
+rm -rf backend intelligence
+
+# 3. Replace docker-compose.yml with the clean version above
+# 4. Bring services back up
+docker compose up -d
+
+# 5. Create the database schema
+docker exec -i la_postgres psql -U hragent -p 5432 -d linkedin_agent < database/schema.sql
+
+# 6. Set up playwright environment
+cd playwright && python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt && playwright install chromium
