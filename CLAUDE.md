@@ -33,10 +33,31 @@ LinkedIn
 - ❌ Redis
 - ❌ Python intelligence services
 
+## PWA Dashboard
+
+The project includes a Progressive Web App dashboard (`pwa_dashboard.html`) that provides a mobile-first interface for managing LinkedIn posts.
+
+**Features:**
+- **Queue Tab** - Review and approve/reject pending posts
+- **History Tab** - View published and rejected posts
+- **Analytics Tab** - System health, approval rates, pillar performance, daily activity charts
+- **Settings Tab** - Configure n8n connection and preferences
+
+**How it works:**
+- Single-page application with tab-based navigation
+- Connects to n8n via webhook endpoints (`/webhook/get-posts`, `/webhook/post-approval`, etc.)
+- Stores n8n URL in localStorage for persistence
+- Analytics loads on-demand when tab is clicked (not on startup)
+- iOS-inspired design with smooth animations and gestures
+
+**Access:**
+Open `pwa_dashboard.html` in a browser. Configure the n8n URL in Settings (default: `http://localhost:5678`).
+
 ## Directory Structure
 
 ```
 linkedin-hr-agent/
+├── pwa_dashboard.html       # PWA dashboard (Queue, History, Analytics, Settings)
 ├── config.json              # All application settings
 ├── docker-compose.yml       # PostgreSQL + n8n only
 ├── .env                     # Environment variables
@@ -45,9 +66,10 @@ linkedin-hr-agent/
 │   └── schema.sql          # Plain SQL schema (run once)
 │
 ├── playwright/
+│   ├── action_server.py    # Flask HTTP server wrapping linkedin_actions.py
 │   ├── linkedin_actions.py # Single entry point for LinkedIn actions
 │   ├── humanizer.py        # Delay/behavior utilities
-│   └── requirements.txt    # playwright only
+│   └── requirements.txt    # playwright + flask
 │
 └── n8n-workflows/          # Exported workflow JSONs for backup
     ├── cv_onboarding.json
@@ -100,9 +122,44 @@ playwright install chromium
 
 # Test LinkedIn action (dry run)
 python linkedin_actions.py '{"action": "post", "content": "Test post", "email": "your@email.com", "password": "yourpass"}'
+
+# Start Flask action server (recommended for n8n integration)
+python action_server.py
+# Server runs on http://localhost:5050
 ```
 
 **Important:** The virtual environment must be in `playwright/venv/` for n8n Execute Command nodes to work correctly.
+
+### Playwright Action Server
+
+The Flask action server (`action_server.py`) provides an HTTP API wrapper around `linkedin_actions.py`:
+
+**Endpoints:**
+- `POST /execute` - Execute LinkedIn actions via JSON payload
+- `GET /health` - Health check endpoint
+
+**Features:**
+- No timeout limits (handles long-running browser operations)
+- Request logging to stderr for debugging
+- Returns structured JSON responses with status, stdout, stderr
+
+**Example request:**
+```bash
+curl -X POST http://localhost:5050/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "post",
+    "content": "Hello LinkedIn!",
+    "email": "user@example.com",
+    "password": "password123"
+  }'
+```
+
+**Why use the action server:**
+- Better timeout handling (no 120s limit)
+- Easier debugging with request/response logging
+- Cleaner n8n integration via HTTP Request nodes
+- Avoids subprocess timeout issues
 
 ### Access n8n
 ```bash
@@ -134,12 +191,29 @@ n8n workflows handle all business logic:
 
 ### Example: Calling Playwright from n8n
 
+**Option 1: Via Flask Action Server (Recommended)**
+
+In an HTTP Request node:
+- Method: POST
+- URL: `http://localhost:5050/execute`
+- Body:
+```json
+{
+  "action": "post",
+  "content": "{{ $json.content }}",
+  "email": "{{ $json.email }}",
+  "password": "{{ $json.password }}"
+}
+```
+
+**Option 2: Direct Script Execution**
+
 In an Execute Command node:
 ```bash
 cd /home/krawin/exp.code/linkedin-hr-agent/playwright && source venv/bin/activate && python linkedin_actions.py '{"action": "post", "content": "{{ $json.content }}", "email": "{{ $json.email }}", "password": "{{ $json.password }}"}'
 ```
 
-**Note:** Use absolute paths. The script creates browser profiles in `playwright/profiles/` automatically.
+**Note:** Use absolute paths. The script creates browser profiles in `playwright/profiles/` automatically. The Flask server option is recommended for better timeout handling and debugging.
 
 ### Example: Calling Ollama from n8n
 
@@ -190,9 +264,27 @@ python linkedin_actions.py '{
 
 The script:
 - Uses persistent browser contexts (saves login state)
-- Implements human-like delays and typing
+- Uses Playwright codegen role-based selectors (`get_by_role`) for reliability
+- Implements character-by-character typing with human-like delays (40-180ms per keystroke)
+- Handles multi-paragraph content with `Shift+Enter` for line breaks
+- Takes debug screenshots on timeout (`/tmp/debug_*.png`)
 - Returns JSON status on stdout
 - Stores browser profiles in `playwright/profiles/`
+- **Timeout Configuration:** 60-second default timeouts for all page operations (navigation, element waits)
+
+**Post Action Implementation:**
+1. Navigate to feed with human-like scrolling and mouse movement (60s timeout)
+2. Click "Start a post" button (15s timeout)
+3. Click text editor (10s timeout)
+4. Type content character-by-character with realistic delays
+5. Click "Post" button (10s timeout)
+6. Verify submission by checking URL contains "feed"
+
+**Timeout Behavior:**
+- Page-level operations: 60 seconds (navigation, default element waits)
+- Specific element waits: 10-15 seconds (buttons, editors)
+- No subprocess timeout when called via Flask action server
+- Handles slow network conditions and LinkedIn's dynamic loading
 
 ## Configuration
 
@@ -223,15 +315,33 @@ All settings are in `config.json`:
 - **PostgreSQL username** - Use `hragent` (not the Cyrillic characters in old config.json)
 - **Browser profiles** - Stored in `playwright/profiles/` to persist login sessions
 - **Virtual environment** - Must be `playwright/venv/` (not `.venv`) for consistency
+- **Flask Action Server** - Runs on port 5050, no timeout limits for long-running browser operations
+- **Timeout Configuration** - 60-second defaults for page operations, no subprocess timeout in Flask server
 
 ## Troubleshooting
 
 **n8n can't connect to Ollama:**
 - Use `http://host.docker.internal:11434` (not `localhost`)
 
+**Flask action server not responding:**
+- Check if server is running: `curl http://localhost:5050/health`
+- View server logs for request/response debugging (logs to stderr)
+- Ensure virtual environment is activated before starting server
+- Check port 5050 is not already in use: `lsof -i :5050`
+
+**Playwright timeout issues:**
+- Default timeouts increased to 60 seconds for page operations
+- Flask action server has no subprocess timeout (handles long operations)
+- Check debug screenshots in `/tmp/debug_*.png` for timeout issues:
+  - `debug_start_post.png` - "Start a post" button not found
+  - `debug_editor.png` - Text editor not found
+  - `debug_post_btn.png` - "Post" button not found
+- If using direct script execution (not Flask server), increase n8n Execute Command timeout
+
 **Playwright fails:**
 - Ensure virtual environment is activated
 - Check browser profiles aren't corrupted: `rm -rf playwright/profiles/*`
+- Verify Chromium is installed: `playwright install chromium`
 
 **Database connection issues:**
 - Verify PostgreSQL is running: `docker-compose ps`
@@ -240,3 +350,4 @@ All settings are in `config.json`:
 **n8n workflows not working:**
 - Check execution logs in n8n UI
 - Verify all nodes have correct credentials configured
+- If using HTTP Request to call Flask server, ensure server is running

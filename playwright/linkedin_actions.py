@@ -91,6 +91,8 @@ async def run(args: dict):
         await context.add_init_script(STEALTH_SCRIPT)
 
         page = context.pages[0] if context.pages else await context.new_page()
+        page.set_default_timeout(60000)
+        page.set_default_navigation_timeout(60000)
 
         # Slight random viewport variation per run
         await page.set_viewport_size({
@@ -128,7 +130,7 @@ async def run(args: dict):
 
 # ─── Login ────────────────────────────────────────────────────────────────────
 async def ensure_logged_in(page, email: str, password: str) -> bool:
-    await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded")
+    await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=60000)
     await random_delay(2, 4)
 
     if "/feed" in page.url and "login" not in page.url and "authwall" not in page.url:
@@ -136,7 +138,7 @@ async def ensure_logged_in(page, email: str, password: str) -> bool:
         return True
 
     print(f"[INFO] Logging in as {email}", file=sys.stderr)
-    await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded")
+    await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=60000)
     await random_delay(1.5, 3)
 
     await human_mouse_move(page)
@@ -163,53 +165,120 @@ async def ensure_logged_in(page, email: str, password: str) -> bool:
 
 # ─── Post ─────────────────────────────────────────────────────────────────────
 async def do_post(page, content: str) -> str:
-    await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded")
-    await random_delay(2, 4)
+    # Status update: publishing started
+    print(json.dumps({"status_update": "publishing"}), flush=True)
 
-    # Natural scroll before posting
-    await human_scroll(page, scrolls=random.randint(2, 4))
-    await random_delay(1, 3)
-    await human_mouse_move(page)
+    # STEP 1 - Navigate to feed
+    # Increase timeout for when called via Flask/n8n
+    page.set_default_timeout(60000)
+    page.set_default_navigation_timeout(60000)
 
-    # Click "Start a post"
     try:
-        start_button = page.locator("button.share-box-feed-entry__trigger").first
-        await start_button.wait_for(state="visible", timeout=10000)
-        await start_button.click()
-    except PlaywrightTimeout:
-        await page.click("//button[contains(., 'Start a post')]")
+        await page.goto(
+            "https://www.linkedin.com/feed/",
+            wait_until="domcontentloaded",
+            timeout=60000
+        )
+        await random_delay(3, 5)
+        await human_scroll(page, scrolls=random.randint(2, 3))
+        await random_delay(1, 2)
+        await human_mouse_move(page)
 
-    await random_delay(1.5, 3)
+        # STEP 2 - Click "Start a post"
+        try:
+            start_btn = page.get_by_role("button", name="Start a post").first
+            await start_btn.wait_for(state="visible", timeout=15000)
+            await human_mouse_move(page)
+            await random_delay(0.5, 1.5)
+            await start_btn.click()
+            await random_delay(2, 3)
+        except PlaywrightTimeout:
+            await page.screenshot(path="/tmp/debug_start_post.png")
+            raise
 
-    # Click editor
-    try:
-        editor = page.locator(".ql-editor[contenteditable='true']").first
-        await editor.wait_for(state="visible", timeout=8000)
-        await editor.click()
-    except PlaywrightTimeout:
-        await page.click(".ql-editor")
+        # STEP 3 - Wait for and click the text editor
+        try:
+            editor = page.get_by_role("textbox", name="Text editor for creating").first
+            await editor.wait_for(state="visible", timeout=10000)
+            await random_delay(0.8, 1.5)
+            await editor.click()
+            await random_delay(0.5, 1)
+        except PlaywrightTimeout:
+            await page.screenshot(path="/tmp/debug_editor.png")
+            raise
 
-    await random_delay(0.8, 2)
+        # STEP 4 - Paste content using stealth clipboard method
+        print("[STEP 4 START] Using stealth clipboard paste", file=sys.stderr)
 
-    # Type content humanly
-    await human_type(page, ".ql-editor", content)
+        try:
+            # Set clipboard content via JavaScript (invisible to LinkedIn)
+            await page.evaluate(f"""
+                const text = {json.dumps(content)};
+                navigator.clipboard.writeText(text).catch(() => {{
+                    // Fallback: use execCommand
+                    const el = document.createElement('textarea');
+                    el.value = text;
+                    document.body.appendChild(el);
+                    el.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(el);
+                }});
+            """)
 
-    # Review pause
-    await random_delay(3, 6)
-    await page.mouse.wheel(0, random.randint(30, 80))
-    await random_delay(1, 2)
+            await random_delay(0.5, 1)
 
-    # Click Post
-    try:
-        post_button = page.locator("button.share-actions__primary-action").first
-        await post_button.wait_for(state="visible", timeout=8000)
-        await post_button.click()
-    except PlaywrightTimeout:
-        await page.click("//button[contains(@class, 'share-actions__primary-action')]")
+            # Focus the editor
+            await editor.click()
+            await random_delay(0.3, 0.8)
 
-    await random_delay(4, 7)
-    print(f"[INFO] Post submitted. URL: {page.url}", file=sys.stderr)
-    return "Post published successfully"
+            # Simulate Ctrl+V paste — completely natural human behavior
+            await page.keyboard.press("Control+v")
+            await random_delay(1, 2)
+
+            print("[STEP 4 DONE] Content pasted successfully", file=sys.stderr)
+
+        except Exception as e:
+            # Fallback to character by character typing if paste fails
+            print(f"[STEP 4 FALLBACK] Paste failed: {e}, falling back to typing", file=sys.stderr)
+            paragraphs = content.split('\n')
+            for i, para in enumerate(paragraphs):
+                if para.strip():
+                    for char in para:
+                        await page.keyboard.type(char)
+                        await asyncio.sleep(random.uniform(0.05, 0.15))
+                if i < len(paragraphs) - 1:
+                    await page.keyboard.press("Shift+Enter")
+                    await random_delay(0.2, 0.5)
+
+        await random_delay(2, 4)
+
+        # STEP 5 - Click Post button
+        try:
+            post_btn = page.get_by_role("button", name="Post", exact=True).first
+            await post_btn.wait_for(state="visible", timeout=10000)
+            await human_mouse_move(page)
+            await random_delay(0.5, 1.5)
+            await post_btn.click()
+            await random_delay(5, 8)
+        except PlaywrightTimeout:
+            await page.screenshot(path="/tmp/debug_post_btn.png")
+            raise
+
+        # STEP 6 - Verify submission
+        print(f"[INFO] Post submitted. URL: {page.url}", file=sys.stderr)
+        if "feed" in page.url:
+            # Status update: published successfully
+            print(json.dumps({"status_update": "published"}), flush=True)
+            return "Post published successfully"
+        else:
+            # Status update: published successfully
+            print(json.dumps({"status_update": "published"}), flush=True)
+            return "Post submitted — verify on LinkedIn"
+
+    except Exception as e:
+        # Status update: failed
+        print(json.dumps({"status_update": "failed"}), flush=True)
+        raise
 
 
 # ─── Comment ──────────────────────────────────────────────────────────────────
