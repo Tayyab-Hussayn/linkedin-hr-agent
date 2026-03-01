@@ -6,7 +6,7 @@ import { Post, Stats } from '@/lib/types'
 import { useToast } from '@/hooks/useToast'
 import { getNextGenerationTime, formatRelativeTime, getPillarColor, cn } from '@/lib/utils'
 import { Sparkles, Clock, Loader2, TrendingUp } from 'lucide-react'
-import { config } from '@/lib/config'
+import { getDailyPostLimit } from '@/lib/config'
 
 export default function ContentPage() {
   const [approvedPosts, setApprovedPosts] = useState<Post[]>([])
@@ -15,6 +15,8 @@ export default function ContentPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [generatedToday, setGeneratedToday] = useState(0)
   const { showToast } = useToast()
+
+  const DAILY_LIMIT = getDailyPostLimit()
 
   useEffect(() => {
     fetchData()
@@ -30,15 +32,34 @@ export default function ContentPage() {
   const fetchData = async () => {
     setIsLoading(true)
     try {
-      const [approved, statsData] = await Promise.all([
+      const [approved, statsData, allPosts, pendingPosts] = await Promise.all([
         api.getPosts('approved', 20),
         api.getStats(),
+        api.getPosts('history', 50),
+        api.getPosts('pending', 50),
       ])
       setApprovedPosts(approved)
       setStats(statsData)
 
-      // Calculate posts generated today (all statuses = generated today)
-      const todayCount = statsData.pending + statsData.approved + statsData.published
+      // Calculate posts generated TODAY only
+      const allTodayPosts = [...allPosts, ...pendingPosts]
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+
+      let todayCount = allTodayPosts.filter(post => {
+        const postDate = new Date(post.created_at)
+        postDate.setHours(0, 0, 0, 0)
+        return postDate.getTime() === today.getTime()
+      }).length
+
+      // Check for manual reset (testing only)
+      const resetDate = localStorage.getItem('limit_reset_date')
+      const todayString = new Date().toDateString()
+      if (resetDate === todayString) {
+        // User reset today — use 0 as effective count
+        todayCount = 0
+      }
+
       setGeneratedToday(todayCount)
     } catch (error) {
       showToast('Failed to load content data', 'error')
@@ -49,8 +70,8 @@ export default function ContentPage() {
 
   const handleGenerateNow = async () => {
     // Check daily limit
-    if (generatedToday >= config.dailyPostLimit) {
-      showToast('Daily limit reached (3 posts per day)', 'warning')
+    if (generatedToday >= DAILY_LIMIT) {
+      showToast(`Daily limit reached (${DAILY_LIMIT} posts per day)`, 'warning')
       return
     }
 
@@ -81,8 +102,16 @@ export default function ContentPage() {
     }
   }
 
+  const handleResetLimit = () => {
+    const todayString = new Date().toDateString()
+    localStorage.setItem('limit_reset_date', todayString)
+    localStorage.setItem('limit_reset_count', '0')
+    showToast('Daily limit reset — you can generate more posts', 'success')
+    fetchData()
+  }
+
   const { hours, minutes } = getNextGenerationTime()
-  const isLimitReached = generatedToday >= config.dailyPostLimit
+  const isLimitReached = generatedToday >= DAILY_LIMIT
 
   return (
     <div className="space-y-6">
@@ -116,7 +145,7 @@ export default function ContentPage() {
         <div className="mb-4 p-3 bg-gray-50 rounded-lg">
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-600">Generated today</span>
-            <span className="font-semibold text-gray-900">{generatedToday} / {config.dailyPostLimit}</span>
+            <span className="font-semibold text-gray-900">{generatedToday} / {DAILY_LIMIT}</span>
           </div>
           <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
             <div
@@ -124,9 +153,17 @@ export default function ContentPage() {
                 "h-full transition-all duration-300",
                 isLimitReached ? "bg-red-500" : "bg-blue-500"
               )}
-              style={{ width: `${Math.min((generatedToday / config.dailyPostLimit) * 100, 100)}%` }}
+              style={{ width: `${Math.min((generatedToday / DAILY_LIMIT) * 100, 100)}%` }}
             />
           </div>
+          {isLimitReached && (
+            <button
+              onClick={handleResetLimit}
+              className="mt-2 text-xs text-gray-400 hover:text-gray-600 hover:underline transition-colors"
+            >
+              ↺ Reset daily limit for testing
+            </button>
+          )}
         </div>
 
         {/* Generate Now Button */}

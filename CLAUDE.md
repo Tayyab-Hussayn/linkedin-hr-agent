@@ -33,45 +33,88 @@ LinkedIn
 - ❌ Redis
 - ❌ Python intelligence services
 
-## PWA Dashboard
+## PostFlow Dashboard (Next.js 14)
 
-The project includes a Progressive Web App dashboard (`pwa_dashboard.html`) that provides a mobile-first interface for managing LinkedIn posts.
+The project includes a production-grade Next.js 14 dashboard called **PostFlow** for managing LinkedIn content automation.
+
+**Tech Stack:**
+- Next.js 14 (App Router)
+- TypeScript
+- Tailwind CSS
+- shadcn/ui components
+- lucide-react icons
 
 **Features:**
-- **Queue Tab** - Review and approve/reject pending posts
-- **History Tab** - View published and rejected posts
-- **Analytics Tab** - System health, approval rates, pillar performance, daily activity charts
-- **Settings Tab** - Configure n8n connection and preferences
+- **Queue Page** - Review, approve, reject, and edit pending posts with animated card removal
+- **History Page** - View all approved, rejected, and published posts
+- **Content Page** - Generate posts on-demand, view scheduled posts, track daily generation limits
+- **Analytics Page** - Health score, stats overview, daily activity charts, pillar performance, insights
+- **Settings Panel** - Configure n8n URL, posts per page, daily post limit
+- **Responsive Design** - Desktop sidebar navigation + mobile bottom tab bar
+- **Real-time Updates** - Auto-refresh on visibility change, live stats tracking
+- **Toast Notifications** - User feedback for all actions
 
 **How it works:**
-- Single-page application with tab-based navigation
+- Client-side React application with server-side rendering
 - Connects to n8n via webhook endpoints (`/webhook/get-posts`, `/webhook/post-approval`, etc.)
-- Stores n8n URL in localStorage for persistence
-- Analytics loads on-demand when tab is clicked (not on startup)
-- iOS-inspired design with smooth animations and gestures
+- All settings stored in localStorage (n8n URL, posts per page, daily limit)
+- Safe API layer with robust JSON parsing and error handling
+- Dynamic daily post limit (configurable 1-10, default 3)
+- Daily limit counter filters posts by `created_at` date (only counts today's posts)
+- Manual reset available for testing (localStorage-based, resets daily count to 0)
 
 **Access:**
-Open `pwa_dashboard.html` in a browser. Configure the n8n URL in Settings (default: `http://localhost:5678`).
+- Desktop: `http://localhost:3000`
+- Mobile (same network): `http://192.168.100.48:3000`
+- Configure n8n URL in Settings (default: `http://192.168.100.48:5678`)
+
+**Development:**
+```bash
+cd dashboard
+npm install
+npm run dev
+```
 
 ## Directory Structure
 
 ```
 linkedin-hr-agent/
-├── pwa_dashboard.html       # PWA dashboard (Queue, History, Analytics, Settings)
-├── config.json              # All application settings
-├── docker-compose.yml       # PostgreSQL + n8n only
-├── .env                     # Environment variables
+├── dashboard/                  # Next.js 14 PostFlow dashboard
+│   ├── src/
+│   │   ├── app/               # Next.js app router pages
+│   │   │   ├── queue/         # Queue page (approve/reject posts)
+│   │   │   ├── history/       # History page (past posts)
+│   │   │   ├── content/       # Content page (generate posts)
+│   │   │   ├── analytics/     # Analytics page (stats & insights)
+│   │   │   └── LayoutWrapper.tsx  # Main layout with settings
+│   │   ├── components/
+│   │   │   ├── layout/        # Sidebar, Header, MobileNav
+│   │   │   └── ui/            # PostCard, Toast, Sheet, etc.
+│   │   ├── lib/
+│   │   │   ├── api.ts         # n8n API integration
+│   │   │   ├── config.ts      # App configuration
+│   │   │   ├── types.ts       # TypeScript interfaces
+│   │   │   └── utils.ts       # Helper functions
+│   │   └── hooks/             # React hooks (useToast)
+│   ├── .env.local             # Environment variables
+│   ├── next.config.ts         # Next.js configuration
+│   └── package.json           # Dependencies
+│
+├── pwa_dashboard.html         # Legacy PWA dashboard (deprecated)
+├── config.json                # All application settings
+├── docker-compose.yml         # PostgreSQL + n8n only
+├── .env                       # Environment variables
 │
 ├── database/
-│   └── schema.sql          # Plain SQL schema (run once)
+│   └── schema.sql            # Plain SQL schema (run once)
 │
 ├── playwright/
-│   ├── action_server.py    # Flask HTTP server wrapping linkedin_actions.py
-│   ├── linkedin_actions.py # Single entry point for LinkedIn actions
-│   ├── humanizer.py        # Delay/behavior utilities
-│   └── requirements.txt    # playwright + flask
+│   ├── action_server.py      # Flask HTTP server wrapping linkedin_actions.py
+│   ├── linkedin_actions.py   # Single entry point for LinkedIn actions
+│   ├── humanizer.py          # Delay/behavior utilities
+│   └── requirements.txt      # playwright + flask
 │
-└── n8n-workflows/          # Exported workflow JSONs for backup
+└── n8n-workflows/            # Exported workflow JSONs for backup
     ├── cv_onboarding.json
     ├── daily_content.json
     ├── engagement.json
@@ -92,6 +135,33 @@ docker-compose ps
 docker-compose logs -f n8n
 docker-compose logs -f postgres
 ```
+
+### Dashboard (Next.js)
+```bash
+cd dashboard
+
+# Install dependencies (first time only)
+npm install
+
+# Start development server
+npm run dev
+# Runs on http://localhost:3000
+
+# Build for production
+npm run build
+
+# Start production server
+npm start
+
+# Type checking
+npm run type-check
+```
+
+**Dashboard Configuration:**
+- Machine IP: `192.168.100.48` (configured in `.env.local`)
+- n8n URL: `http://192.168.100.48:5678` (configurable in Settings)
+- Desktop access: `http://localhost:3000`
+- Mobile access: `http://192.168.100.48:3000`
 
 ### Database Operations
 ```bash
@@ -317,8 +387,88 @@ All settings are in `config.json`:
 - **Virtual environment** - Must be `playwright/venv/` (not `.venv`) for consistency
 - **Flask Action Server** - Runs on port 5050, no timeout limits for long-running browser operations
 - **Timeout Configuration** - 60-second defaults for page operations, no subprocess timeout in Flask server
+- **Dashboard Settings** - All stored in localStorage (n8n URL, posts per page, daily post limit)
+- **Dashboard API** - Uses dynamic URL resolution (localStorage → env variable → default)
+- **Safe JSON Parsing** - All API responses use text parsing first, never direct res.json()
+- **Daily Limit Counter** - Filters posts by `created_at` date to count only today's posts (not all-time total)
+- **Manual Reset** - Testing feature allows resetting daily limit via localStorage (`limit_reset_date`)
+
+## Dashboard API Integration
+
+The dashboard connects to n8n via webhook endpoints:
+
+**GET Endpoints:**
+- `/webhook/get-posts?status=pending&limit=20` - Get pending posts
+- `/webhook/get-posts?status=approved&limit=20` - Get approved posts
+- `/webhook/get-posts?status=history&limit=50` - Get post history
+- `/webhook/get-posts?status=stats` - Get stats (pending, approved, published, rejected counts)
+- `/webhook/get-posts?status=pillar_stats` - Get content pillar performance
+- `/webhook/get-posts?status=daily_activity&days=7` - Get daily activity data
+
+**POST Endpoints:**
+- `/webhook/post-approval` - Approve or reject a post
+  ```json
+  {
+    "post_id": "uuid",
+    "decision": "approved" | "rejected",
+    "content": "optional edited content"
+  }
+  ```
+- `/webhook/generate-now` - Trigger content generation
+  ```json
+  {
+    "client_id": "hr-pro-001"
+  }
+  ```
+- `/webhook/schedule-post` - Schedule a post for publishing
+  ```json
+  {
+    "post_id": "uuid",
+    "scheduled_for": "ISO 8601 timestamp"
+  }
+  ```
+
+**API Error Handling:**
+- All endpoints return empty arrays/default objects on error
+- No exceptions thrown to UI
+- Safe JSON parsing with try/catch
+- Empty response handling (returns defaults)
+- Network error handling (returns defaults)
 
 ## Troubleshooting
+
+**Dashboard not loading or showing errors:**
+- Check if n8n is running: `docker-compose ps`
+- Verify n8n URL in Settings matches your setup (default: `http://192.168.100.48:5678`)
+- Test connection using the "Test Connection" button in Settings
+- Check browser console for API errors
+- Ensure `.env.local` has correct `NEXT_PUBLIC_N8N_URL`
+
+**Dashboard shows empty data:**
+- Verify n8n webhooks are configured and active
+- Check n8n execution logs for errors
+- Test webhook endpoints directly: `curl http://192.168.100.48:5678/webhook/get-posts?status=stats`
+- Ensure PostgreSQL database has data: `docker exec la_postgres psql -U hragent -d linkedin_agent -c "SELECT COUNT(*) FROM posts;"`
+
+**"Generated today" counter not updating:**
+- Counter now filters posts by `created_at` date (only counts today's posts)
+- Counter updates on page visibility change (switching tabs) or manual refresh
+- Check if posts have valid `created_at` timestamps in database
+- Verify daily limit setting in Settings (default: 3)
+- Use "Reset daily limit for testing" button when limit is reached to test generation again
+- Manual reset stores `limit_reset_date` in localStorage and sets effective count to 0 for current day
+
+**Mobile access not working:**
+- Ensure mobile device is on same network as development machine
+- Use machine IP address: `http://192.168.100.48:3000`
+- Check firewall settings allow port 3000
+- Verify Next.js dev server is running with network access
+
+**Settings not persisting:**
+- Settings are stored in browser localStorage
+- Clear browser cache may reset settings
+- Each browser/device has separate settings
+- Check browser console for localStorage errors
 
 **n8n can't connect to Ollama:**
 - Use `http://host.docker.internal:11434` (not `localhost`)

@@ -16,6 +16,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [n8nUrl, setN8nUrl] = useState('')
   const [postsPerPage, setPostsPerPage] = useState(20)
+  const [dailyPostLimit, setDailyPostLimit] = useState(3)
   const { toasts, showToast, dismissToast } = useToast()
 
   useEffect(() => {
@@ -23,8 +24,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') {
       const storedUrl = localStorage.getItem('n8n_url') || config.n8nUrl
       const storedLimit = localStorage.getItem('posts_per_page') || '20'
+      const storedDailyLimit = localStorage.getItem('daily_post_limit') || '3'
       setN8nUrl(storedUrl)
       setPostsPerPage(parseInt(storedLimit))
+      setDailyPostLimit(parseInt(storedDailyLimit))
     }
 
     // Fetch initial stats
@@ -49,6 +52,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') {
       localStorage.setItem('n8n_url', n8nUrl)
       localStorage.setItem('posts_per_page', postsPerPage.toString())
+      localStorage.setItem('daily_post_limit', dailyPostLimit.toString())
     }
     setIsSettingsOpen(false)
     showToast('Settings saved successfully', 'success')
@@ -118,6 +122,24 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
               max="100"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+          </div>
+
+          {/* Daily Post Limit */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Daily Post Limit
+            </label>
+            <input
+              type="number"
+              value={dailyPostLimit}
+              onChange={(e) => setDailyPostLimit(parseInt(e.target.value) || 3)}
+              min="1"
+              max="10"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Maximum posts to generate per day
+            </p>
           </div>
 
           {/* Test Connection */}
