@@ -145,7 +145,7 @@ export default function ContentPage() {
         <div className="mb-4 p-3 bg-gray-50 rounded-lg">
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-600">Generated today</span>
-            <span className="font-semibold text-gray-900">{generatedToday} / {DAILY_LIMIT}</span>
+            <span className="font-semibold text-gray-900">{Math.min(generatedToday, DAILY_LIMIT)} / {DAILY_LIMIT}</span>
           </div>
           <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
             <div
@@ -159,9 +159,13 @@ export default function ContentPage() {
           {isLimitReached && (
             <button
               onClick={handleResetLimit}
-              className="mt-2 text-xs text-gray-400 hover:text-gray-600 hover:underline transition-colors"
+              className="mt-2 flex items-center gap-1.5 text-xs text-gray-500
+                         hover:text-blue-600 transition-colors cursor-pointer
+                         bg-gray-100 hover:bg-blue-50 px-3 py-1.5 rounded-full
+                         border border-gray-200 hover:border-blue-200"
             >
-              ↺ Reset daily limit for testing
+              <span>↺</span>
+              <span>Reset daily limit for testing</span>
             </button>
           )}
         </div>
