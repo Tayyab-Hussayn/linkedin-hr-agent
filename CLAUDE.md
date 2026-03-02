@@ -427,6 +427,12 @@ The dashboard connects to n8n via webhook endpoints:
     "scheduled_for": "ISO 8601 timestamp"
   }
   ```
+- `/webhook/reset-daily-limit` - Reset daily post generation limit (deletes today's posts from DB)
+  ```json
+  {
+    "client_id": "hr-pro-001"
+  }
+  ```
 
 **API Error Handling:**
 - All endpoints return empty arrays/default objects on error
@@ -451,12 +457,12 @@ The dashboard connects to n8n via webhook endpoints:
 - Ensure PostgreSQL database has data: `docker exec la_postgres psql -U hragent -d linkedin_agent -c "SELECT COUNT(*) FROM posts;"`
 
 **"Generated today" counter not updating:**
-- Counter now filters posts by `created_at` date (only counts today's posts)
+- Counter filters posts by `created_at` date (only counts today's posts)
 - Counter updates on page visibility change (switching tabs) or manual refresh
 - Check if posts have valid `created_at` timestamps in database
 - Verify daily limit setting in Settings (default: 3)
-- Use "Reset daily limit for testing" button when limit is reached to test generation again
-- Manual reset stores `limit_reset_date` in localStorage and sets effective count to 0 for current day
+- "Reset daily limit" button calls `/webhook/reset-daily-limit` to delete today's posts from DB
+- After reset, counter refetches from database to show accurate count
 
 **Mobile access not working:**
 - Ensure mobile device is on same network as development machine

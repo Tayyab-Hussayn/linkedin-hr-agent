@@ -15,3 +15,18 @@ SELECT id, topic_pillar, LEFT(content, 120) as preview
 FROM posts 
 WHERE approval_status = 'pending' 
 ORDER BY created_at DESC LIMIT 3;"
+
+
+	Reset daily content limit
+docker exec -it la_postgres psql -U hragent -d linkedin_agent -p 5432 -c "
+UPDATE posts 
+SET approval_status = 'pending', post_status = 'draft'
+WHERE id IN (
+  SELECT id FROM posts 
+  ORDER BY created_at DESC 
+  LIMIT 1
+);"
+
+
+	cloudefleare tunnel:
+cloudflared tunnel --url http://localhost:5678

@@ -17,6 +17,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const [n8nUrl, setN8nUrl] = useState('')
   const [postsPerPage, setPostsPerPage] = useState(20)
   const [dailyPostLimit, setDailyPostLimit] = useState(3)
+  const [isSaving, setIsSaving] = useState(false)
   const { toasts, showToast, dismissToast } = useToast()
 
   useEffect(() => {
@@ -34,6 +35,20 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     fetchStats()
   }, [])
 
+  // Load daily limit from DB when settings panel opens
+  useEffect(() => {
+    if (isSettingsOpen) {
+      api.getClientSettings().then(settings => {
+        setDailyPostLimit(settings.daily_post_limit || 3)
+      })
+      // Also read from localStorage as fallback
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('daily_post_limit')
+        if (stored) setDailyPostLimit(parseInt(stored) || 3)
+      }
+    }
+  }, [isSettingsOpen])
+
   const fetchStats = async () => {
     try {
       const stats = await api.getStats()
@@ -48,16 +63,35 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     fetchStats()
   }
 
-  const handleSaveSettings = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('n8n_url', n8nUrl)
-      localStorage.setItem('posts_per_page', postsPerPage.toString())
-      localStorage.setItem('daily_post_limit', dailyPostLimit.toString())
+  const handleSaveSettings = async () => {
+    setIsSaving(true)
+    try {
+      // Save n8n URL and posts per page to localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('n8n_url', n8nUrl)
+        localStorage.setItem('posts_per_page', postsPerPage.toString())
+        localStorage.setItem('daily_post_limit', dailyPostLimit.toString())
+      }
+
+      // Save daily limit to DB via n8n
+      const result = await api.updateClientSettings('hr-pro-001', {
+        daily_post_limit: dailyPostLimit
+      })
+
+      if (result.status === 'ok' || result.message) {
+        showToast('Settings saved successfully', 'success')
+      } else {
+        showToast('Settings saved locally — DB update may have failed', 'warning')
+      }
+
+      setIsSettingsOpen(false)
+      // Refresh stats with new URL
+      setTimeout(() => fetchStats(), 500)
+    } catch(e) {
+      showToast('Failed to save settings', 'error')
+    } finally {
+      setIsSaving(false)
     }
-    setIsSettingsOpen(false)
-    showToast('Settings saved successfully', 'success')
-    // Refresh stats with new URL
-    setTimeout(() => fetchStats(), 500)
   }
 
   const handleTestConnection = async () => {
@@ -134,11 +168,11 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
               value={dailyPostLimit}
               onChange={(e) => setDailyPostLimit(parseInt(e.target.value) || 3)}
               min="1"
-              max="10"
+              max="20"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Maximum posts to generate per day
+              Maximum posts to generate per day (Current: {dailyPostLimit} posts/day)
             </p>
           </div>
 
@@ -153,9 +187,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           {/* Save Settings */}
           <button
             onClick={handleSaveSettings}
-            className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors"
+            disabled={isSaving}
+            className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Save Settings
+            {isSaving ? 'Saving...' : 'Save Settings'}
           </button>
         </div>
       </Sheet>

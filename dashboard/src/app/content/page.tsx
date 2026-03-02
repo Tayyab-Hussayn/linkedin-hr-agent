@@ -14,15 +14,18 @@ export default function ContentPage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [generatedToday, setGeneratedToday] = useState(0)
+  const [dailyLimit, setDailyLimit] = useState(getDailyPostLimit())
   const { showToast } = useToast()
-
-  const DAILY_LIMIT = getDailyPostLimit()
 
   useEffect(() => {
     fetchData()
 
+    // Re-read limit when component mounts or becomes visible
     const handleVisibility = () => {
-      if (!document.hidden) fetchData()
+      if (!document.hidden) {
+        setDailyLimit(getDailyPostLimit())
+        fetchData()
+      }
     }
 
     document.addEventListener('visibilitychange', handleVisibility)
@@ -70,8 +73,8 @@ export default function ContentPage() {
 
   const handleGenerateNow = async () => {
     // Check daily limit
-    if (generatedToday >= DAILY_LIMIT) {
-      showToast(`Daily limit reached (${DAILY_LIMIT} posts per day)`, 'warning')
+    if (generatedToday >= dailyLimit) {
+      showToast(`Daily limit reached (${dailyLimit} posts per day)`, 'warning')
       return
     }
 
@@ -102,16 +105,28 @@ export default function ContentPage() {
     }
   }
 
-  const handleResetLimit = () => {
-    const todayString = new Date().toDateString()
-    localStorage.setItem('limit_reset_date', todayString)
-    localStorage.setItem('limit_reset_count', '0')
-    showToast('Daily limit reset — you can generate more posts', 'success')
-    fetchData()
+  const handleResetLimit = async () => {
+    try {
+      // Step 1: Delete today's posts from DB via n8n webhook
+      await api.resetDailyLimit()
+
+      // Step 2: Clear localStorage reset flags
+      localStorage.removeItem('limit_reset_date')
+      localStorage.removeItem('limit_reset_count')
+
+      // Step 3: Refetch fresh count from DB
+      await fetchData()
+
+      // Step 4: Show success toast
+      showToast('Daily limit reset — you can generate new posts', 'success')
+
+    } catch(e) {
+      showToast('Reset failed — try again', 'error')
+    }
   }
 
   const { hours, minutes } = getNextGenerationTime()
-  const isLimitReached = generatedToday >= DAILY_LIMIT
+  const isLimitReached = generatedToday >= dailyLimit
 
   return (
     <div className="space-y-6">
@@ -145,7 +160,7 @@ export default function ContentPage() {
         <div className="mb-4 p-3 bg-gray-50 rounded-lg">
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-600">Generated today</span>
-            <span className="font-semibold text-gray-900">{Math.min(generatedToday, DAILY_LIMIT)} / {DAILY_LIMIT}</span>
+            <span className="font-semibold text-gray-900">{Math.min(generatedToday, dailyLimit)} / {dailyLimit}</span>
           </div>
           <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
             <div
@@ -153,7 +168,7 @@ export default function ContentPage() {
                 "h-full transition-all duration-300",
                 isLimitReached ? "bg-red-500" : "bg-blue-500"
               )}
-              style={{ width: `${Math.min((generatedToday / DAILY_LIMIT) * 100, 100)}%` }}
+              style={{ width: `${Math.min((generatedToday / dailyLimit) * 100, 100)}%` }}
             />
           </div>
           {isLimitReached && (
