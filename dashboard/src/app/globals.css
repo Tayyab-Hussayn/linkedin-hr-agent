@@ -166,3 +166,25 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.3);
 }
+
+/* Scheduled Tab Pulse Animation */
+@keyframes scheduleNotify {
+  0%   { transform: scale(0); opacity: 0; }
+  50%  { transform: scale(1.3); opacity: 1; }
+  70%  { transform: scale(0.9); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes navGlow {
+  0%   { background: transparent; }
+  30%  { background: rgba(0, 113, 227, 0.12); }
+  100% { background: transparent; }
+}
+
+.scheduled-pulse .nav-glow {
+  animation: navGlow 3.5s ease forwards;
+}
+
+.scheduled-pulse .pulse-dot {
+  animation: scheduleNotify 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

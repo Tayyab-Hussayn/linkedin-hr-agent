@@ -285,6 +285,83 @@ export default function AnalyticsPage() {
           </div>
         </div>
       )}
+
+      {/* Post History Section */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6">
+        <h2 className="font-semibold text-lg mb-4">Post History</h2>
+        <p className="text-sm text-gray-500 mb-4">Complete history of all posts with their current status</p>
+
+        <HistorySection />
+      </div>
+    </div>
+  )
+}
+
+function HistorySection() {
+  const [historyPosts, setHistoryPosts] = useState<Post[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    fetchHistory()
+  }, [])
+
+  const fetchHistory = async () => {
+    setIsLoading(true)
+    try {
+      const posts = await api.getPosts('history', 20)
+      setHistoryPosts(posts)
+    } catch (error) {
+      console.error('Failed to load history:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  if (isLoading) {
+    return <div className="text-center py-8 text-gray-500">Loading history...</div>
+  }
+
+  if (historyPosts.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-gray-500">No post history yet</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      {historyPosts.map((post) => {
+        const pillarIndex = post.topic_pillar.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+        const pillarColor = getPillarColor(pillarIndex)
+        const hook = post.content.split('\n').filter(l => l.trim())[0] || post.content.substring(0, 100)
+        const statusLabel = getStatusLabel(post)
+        const statusColors: Record<string, string> = {
+          Published: 'bg-blue-100 text-blue-700 border-blue-200',
+          Approved: 'bg-green-100 text-green-700 border-green-200',
+          Rejected: 'bg-red-100 text-red-700 border-red-200',
+          Pending: 'bg-orange-100 text-orange-700 border-orange-200',
+        }
+
+        return (
+          <div key={post.id} className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className={cn('px-2 py-0.5 text-xs font-semibold rounded-full border', pillarColor)}>
+                  {post.topic_pillar}
+                </span>
+                <span className={cn('px-2 py-0.5 text-xs font-semibold rounded-full border', statusColors[statusLabel])}>
+                  {statusLabel}
+                </span>
+              </div>
+              <p className="font-serif text-sm font-bold text-gray-900 line-clamp-1 mb-1">
+                {hook}
+              </p>
+              <p className="text-xs text-gray-500">{formatRelativeTime(post.created_at)}</p>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

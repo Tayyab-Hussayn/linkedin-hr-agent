@@ -2,8 +2,9 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Clock, Activity, Sparkles, BarChart3 } from 'lucide-react'
+import { Clock, CalendarClock, Sparkles, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useAppContext } from '@/context/AppContext'
 
 interface MobileNavProps {
   pendingCount?: number
@@ -11,10 +12,11 @@ interface MobileNavProps {
 
 export function MobileNav({ pendingCount = 0 }: MobileNavProps) {
   const pathname = usePathname()
+  const { scheduledPulse, scheduledCount } = useAppContext()
 
   const navItems = [
     { href: '/queue', label: 'Queue', icon: Clock, badge: pendingCount },
-    { href: '/history', label: 'History', icon: Activity },
+    { href: '/scheduled', label: 'Scheduled', icon: CalendarClock, badge: scheduledCount, isPulsing: scheduledPulse },
     { href: '/content', label: 'Content', icon: Sparkles },
     { href: '/analytics', label: 'Analytics', icon: BarChart3 },
   ]
@@ -32,18 +34,25 @@ export function MobileNav({ pendingCount = 0 }: MobileNavProps) {
               href={item.href}
               className={cn(
                 'flex flex-col items-center justify-center gap-1 px-3 py-2 flex-1 relative',
-                isActive ? 'text-blue-600' : 'text-gray-500'
+                isActive ? 'text-blue-600' : 'text-gray-500',
+                item.isPulsing && 'scheduled-pulse'
               )}
             >
               <div className="relative">
                 <Icon className="w-5 h-5" />
                 {item.badge !== undefined && item.badge > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-orange-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                     {item.badge > 9 ? '9+' : item.badge}
                   </span>
                 )}
+                {/* Pulse notification dot */}
+                {item.isPulsing && (
+                  <span className="pulse-dot absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full" />
+                )}
               </div>
               <span className="text-[10px] font-medium">{item.label}</span>
+              {/* Nav glow background */}
+              {item.isPulsing && <span className="nav-glow absolute inset-0 rounded-lg -z-10" />}
             </Link>
           )
         })}

@@ -2,8 +2,9 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Clock, Activity, Sparkles, BarChart3, Settings } from 'lucide-react'
+import { Clock, CalendarClock, Sparkles, BarChart3, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useAppContext } from '@/context/AppContext'
 
 interface SidebarProps {
   pendingCount?: number
@@ -12,10 +13,11 @@ interface SidebarProps {
 
 export function Sidebar({ pendingCount = 0, publishedCount = 0 }: SidebarProps) {
   const pathname = usePathname()
+  const { scheduledPulse, scheduledCount } = useAppContext()
 
   const navItems = [
     { href: '/queue', label: 'Queue', icon: Clock, badge: pendingCount },
-    { href: '/history', label: 'History', icon: Activity },
+    { href: '/scheduled', label: 'Scheduled', icon: CalendarClock, badge: scheduledCount, isPulsing: scheduledPulse },
     { href: '/content', label: 'Content', icon: Sparkles },
     { href: '/analytics', label: 'Analytics', icon: BarChart3 },
   ]
@@ -49,21 +51,28 @@ export function Sidebar({ pendingCount = 0, publishedCount = 0 }: SidebarProps) 
               key={item.href}
               href={item.href}
               className={cn(
-                'flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                'flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors relative',
                 isActive
                   ? 'bg-blue-50 text-blue-600'
-                  : 'text-gray-700 hover:bg-gray-100'
+                  : 'text-gray-700 hover:bg-gray-100',
+                item.isPulsing && 'scheduled-pulse'
               )}
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 relative">
                 <Icon className="w-4 h-4" />
                 <span>{item.label}</span>
+                {/* Pulse notification dot */}
+                {item.isPulsing && (
+                  <span className="pulse-dot absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full" />
+                )}
               </div>
               {item.badge !== undefined && item.badge > 0 && (
-                <span className="px-2 py-0.5 text-xs font-semibold bg-orange-100 text-orange-700 rounded-full">
+                <span className="px-2 py-0.5 text-xs font-semibold bg-blue-500 text-white rounded-full min-w-5 text-center">
                   {item.badge}
                 </span>
               )}
+              {/* Nav glow background */}
+              {item.isPulsing && <span className="nav-glow absolute inset-0 rounded-lg -z-10" />}
             </Link>
           )
         })}

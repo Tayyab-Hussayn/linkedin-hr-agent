@@ -1,0 +1,238 @@
+{
+  "name": "03 - Post Approval Flow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "post-approval",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-2512, 240],
+      "id": "01006c33-80ee-4592-a1e8-b69a479556ef",
+      "name": "Approval Webhook",
+      "webhookId": "3d321283-e9de-4aff-98b5-337bf3ac0b8a"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate incoming approval request\nconst body = $input.first().json.body;\n\nconst required = ['post_id', 'decision'];\nconst missing = required.filter(f => !body[f]);\nif (missing.length > 0) {\n  throw new Error(`Missing required fields: ${missing.join(', ')}`);\n}\n\nconst validDecisions = ['approved', 'rejected', 'edited'];\nif (!validDecisions.includes(body.decision)) {\n  throw new Error(`Invalid decision: ${body.decision}. Must be one of: ${validDecisions.join(', ')}`);\n}\n\nif (body.decision === 'edited' && !body.content) {\n  throw new Error('Edited decision requires content field with updated post text');\n}\n\nreturn [{\n  json: {\n    post_id: body.post_id,\n    decision: body.decision,\n    content: body.content || null,\n    rejection_reason: body.rejection_reason || null,\n    scheduled_for: body.scheduled_for || null\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-2256, 240],
+      "id": "f4333bbd-8dd5-4252-9734-5d3a35df2438",
+      "name": "Validate Approval Request"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  p.id,\n  p.client_id,\n  p.content,\n  p.topic_pillar,\n  p.post_format,\n  p.approval_status,\n  p.post_status,\n  c.linkedin_email,\n  c.linkedin_password,\n  c.timezone\nFROM posts p\nJOIN clients c ON c.id = p.client_id\nWHERE p.id = '{{ $json.post_id }}';\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-2016, 240],
+      "id": "8b204135-9c79-4f14-99a4-12b3a26d9ce1",
+      "name": "Fetch Post Details",
+      "credentials": {
+        "postgres": {
+          "id": "JsQ6LXHQkw3ru7C2",
+          "name": "LinkedIn Agent DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge post data with approval decision\nconst postData = $input.first().json;\nconst approvalData = $('Validate Approval Request').item.json;\n\nif (!postData.id) {\n  throw new Error(`Post not found: ${approvalData.post_id}`);\n}\n\nif (postData.post_status === 'published') {\n  throw new Error(`Post ${postData.id} is already published`);\n}\nif (postData.approval_status === 'approved' && approvalData.decision === 'approved') {\n  throw new Error(`Post ${postData.id} is already approved`);\n}\n\nconst finalContent = (approvalData.decision === 'edited' && approvalData.content)\n  ? approvalData.content\n  : postData.content;\n\nconst finalDecision = approvalData.decision === 'edited' ? 'approved' : approvalData.decision;\n\nreturn [{\n  json: {\n    post_id: postData.id,\n    client_id: postData.client_id,\n    content: finalContent,\n    topic_pillar: postData.topic_pillar,\n    post_format: postData.post_format,\n    decision: finalDecision,\n    was_edited: approvalData.decision === 'edited',\n    rejection_reason: approvalData.rejection_reason || null,\n    scheduled_for: approvalData.scheduled_for || null\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1776, 240],
+      "id": "ce7ab89a-1869-47f6-b654-d68b742a2050",
+      "name": "Merge Approval Data"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "decision-check",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "approved",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-1536, 240],
+      "id": "0d8c1380-a0e0-452f-ae5a-881c8b0aa445",
+      "name": "Approved or Rejected?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE posts SET\n  approval_status = 'approved',\n  post_status = 'draft',\n  content = '{{ $json.content.replace(/\\\\/g, \"\\\\\\\\\").replace(/'/g, \"''\") }}',\n  approved_at = NOW(),\n  scheduled_for = {{ $json.scheduled_for ? `'${$json.scheduled_for}'` : 'NOW() + INTERVAL \\'5 minutes\\''}}\nWHERE id = '{{ $json.post_id }}'\nRETURNING id, client_id, content, approval_status, post_status, scheduled_for;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-1296, 112],
+      "id": "53193243-c20a-4d77-adde-1a861d82a014",
+      "name": "Mark as Approved",
+      "credentials": {
+        "postgres": {
+          "id": "JsQ6LXHQkw3ru7C2",
+          "name": "LinkedIn Agent DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE posts SET\n  approval_status = 'rejected',\n  post_status = 'skipped',\n  approval_note = '{{ ($json.rejection_reason || \"Rejected by owner\").replace(/'/g, \"''\") }}'\nWHERE id = '{{ $json.post_id }}'\nRETURNING id, client_id, approval_status, post_status;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-1296, 352],
+      "id": "a7efd077-5516-45e2-9649-8237f8f900dd",
+      "name": "Mark as Rejected",
+      "credentials": {
+        "postgres": {
+          "id": "JsQ6LXHQkw3ru7C2",
+          "name": "LinkedIn Agent DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build response for approved post\n// Queue worker will pick this up and publish at scheduled_for time\nconst approvedPost = $input.first().json;\n\nreturn [{\n  json: {\n    status: 'ok',\n    decision: 'approved',\n    post_id: approvedPost.id,\n    post_status: approvedPost.post_status,\n    scheduled_for: approvedPost.scheduled_for,\n    message: 'Post approved and scheduled for publishing. Queue worker will publish it at the scheduled time.'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1056, 112],
+      "id": "build-approved-response-001",
+      "name": "Build Approved Response"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build response for rejected post\nconst rejectedPost = $input.first().json;\n\nreturn [{\n  json: {\n    status: 'ok',\n    decision: 'rejected',\n    post_id: rejectedPost.id,\n    post_status: rejectedPost.post_status,\n    message: 'Post rejected successfully. A new post will be generated in the next run.'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1056, 352],
+      "id": "079ec74d-8267-49f0-b279-c8b3db7311eb",
+      "name": "Build Rejected Response"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [-816, 112],
+      "id": "ab5037df-6dab-4280-b541-34957d77cf43",
+      "name": "Respond Approved"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [-816, 352],
+      "id": "ad233785-712d-4296-abaa-30c3073f194b",
+      "name": "Respond Rejected"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Approval Webhook": {
+      "main": [[{"node": "Validate Approval Request", "type": "main", "index": 0}]]
+    },
+    "Validate Approval Request": {
+      "main": [[{"node": "Fetch Post Details", "type": "main", "index": 0}]]
+    },
+    "Fetch Post Details": {
+      "main": [[{"node": "Merge Approval Data", "type": "main", "index": 0}]]
+    },
+    "Merge Approval Data": {
+      "main": [[{"node": "Approved or Rejected?", "type": "main", "index": 0}]]
+    },
+    "Approved or Rejected?": {
+      "main": [
+        [{"node": "Mark as Approved", "type": "main", "index": 0}],
+        [{"node": "Mark as Rejected", "type": "main", "index": 0}]
+      ]
+    },
+    "Mark as Approved": {
+      "main": [[{"node": "Build Approved Response", "type": "main", "index": 0}]]
+    },
+    "Mark as Rejected": {
+      "main": [[{"node": "Build Rejected Response", "type": "main", "index": 0}]]
+    },
+    "Build Approved Response": {
+      "main": [[{"node": "Respond Approved", "type": "main", "index": 0}]]
+    },
+    "Build Rejected Response": {
+      "main": [[{"node": "Respond Rejected", "type": "main", "index": 0}]]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "7364b7e7-25bb-4ab1-acc3-ade32d819964",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "497400c4566cd6214d30d36fa048e8a348f529be3d0ded3902cce04e13760ef2"
+  },
+  "id": "N5AXHwsXkb0tmeEq",
+  "tags": []
+}

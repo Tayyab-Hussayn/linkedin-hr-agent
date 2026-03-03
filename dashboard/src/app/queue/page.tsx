@@ -9,7 +9,28 @@ import { SkeletonCard } from '@/components/ui/SkeletonCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Sheet } from '@/components/ui/Sheet'
 import { useToast } from '@/hooks/useToast'
+import { useAppContext } from '@/context/AppContext'
 import Link from 'next/link'
+
+function getNextScheduleSlot(): Date {
+  const now = new Date()
+  const slots = [9, 12, 18] // 9am, 12pm, 6pm
+
+  for (const hour of slots) {
+    const slot = new Date()
+    slot.setHours(hour, 0, 0, 0)
+    // Slot must be at least 30 mins in future
+    if (slot.getTime() - now.getTime() > 30 * 60 * 1000) {
+      return slot
+    }
+  }
+
+  // All today's slots passed — use tomorrow 9am
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  tomorrow.setHours(9, 0, 0, 0)
+  return tomorrow
+}
 
 export default function QueuePage() {
   const [posts, setPosts] = useState<Post[]>([])
@@ -20,6 +41,7 @@ export default function QueuePage() {
   const [editedContent, setEditedContent] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const { showToast } = useToast()
+  const { triggerScheduledPulse, setScheduledCount } = useAppContext()
 
   useEffect(() => {
     fetchData()
@@ -41,38 +63,42 @@ export default function QueuePage() {
     }
   }
 
-  const handleApprove = async (postId: string) => {
+  const loadStats = async () => {
     try {
-      // Mark as removing to trigger animation
-      setRemovingIds(prev => new Set(prev).add(postId))
+      const statsData = await api.getStats()
+      setStats(statsData)
+      setScheduledCount(statsData.approved || 0)
+    } catch (error) {
+      console.error('Failed to load stats:', error)
+    }
+  }
 
+  const handleApprove = async (postId: string) => {
+    setRemovingIds(prev => new Set(prev).add(postId))
+    try {
+      // Just approve — n8n sets scheduled_for automatically
       await api.submitDecision(postId, 'approved')
 
-      // Wait for animation to complete
-      setTimeout(() => {
-        setPosts(prev => prev.filter(p => p.id !== postId))
-        setRemovingIds(prev => {
-          const next = new Set(prev)
-          next.delete(postId)
-          return next
-        })
-        if (stats) {
-          setStats({
-            ...stats,
-            pending: stats.pending - 1,
-            approved: stats.approved + 1,
-          })
-        }
-      }, 300)
+      // Remove from queue with animation
+      setPosts(prev => prev.filter(p => p.id !== postId))
 
-      showToast('Post approved successfully!', 'success')
-    } catch (error) {
+      // Show success toast
+      showToast('Post scheduled for publishing ✓', 'success')
+
+      // Trigger scheduled tab pulse animation
+      triggerScheduledPulse()
+
+      // Refresh stats
+      await loadStats()
+
+    } catch(e) {
+      showToast('Failed to approve post', 'error')
+    } finally {
       setRemovingIds(prev => {
         const next = new Set(prev)
         next.delete(postId)
         return next
       })
-      showToast('Failed to approve post', 'error')
     }
   }
 
@@ -124,7 +150,12 @@ export default function QueuePage() {
       // Mark as removing to trigger animation
       setRemovingIds(prev => new Set(prev).add(editingPost.id))
 
+      // Step 1: Mark as approved with edited content
       await api.submitDecision(editingPost.id, 'approved', editedContent)
+
+      // Step 2: Assign default schedule time
+      const scheduledTime = getNextScheduleSlot()
+      await api.schedulePost(editingPost.id, scheduledTime.toISOString())
 
       // Wait for animation to complete
       setTimeout(() => {
@@ -144,7 +175,13 @@ export default function QueuePage() {
       }, 300)
 
       setEditingPost(null)
-      showToast('Post edited and approved!', 'success')
+      showToast('Post edited and scheduled!', 'success')
+
+      // Trigger Scheduled tab animation
+      triggerScheduledPulse()
+
+      // Update stats
+      await loadStats()
     } catch (error) {
       setRemovingIds(prev => {
         const next = new Set(prev)

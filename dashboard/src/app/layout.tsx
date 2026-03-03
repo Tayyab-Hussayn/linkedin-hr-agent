@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, DM_Serif_Display } from "next/font/google";
 import "./globals.css";
 import { LayoutWrapper } from "./LayoutWrapper";
+import { AppProvider } from "@/context/AppContext";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 
@@ -53,7 +54,9 @@ export default function RootLayout({
         className={`${dmSans.variable} ${dmSerif.variable} antialiased font-sans bg-gray-50`}
         style={{ fontFamily: 'var(--font-dm-sans)' }}
       >
-        <LayoutWrapper>{children}</LayoutWrapper>
+        <AppProvider>
+          <LayoutWrapper>{children}</LayoutWrapper>
+        </AppProvider>
         <ServiceWorkerRegistration />
         <PWAInstallPrompt />
       </body>

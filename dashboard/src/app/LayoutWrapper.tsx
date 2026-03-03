@@ -7,6 +7,7 @@ import { MobileNav } from '@/components/layout/MobileNav'
 import { ToastContainer } from '@/components/ui/Toast'
 import { Sheet } from '@/components/ui/Sheet'
 import { useToast } from '@/hooks/useToast'
+import { useAppContext } from '@/context/AppContext'
 import { api } from '@/lib/api'
 import { config } from '@/lib/config'
 
@@ -19,6 +20,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const [dailyPostLimit, setDailyPostLimit] = useState(3)
   const [isSaving, setIsSaving] = useState(false)
   const { toasts, showToast, dismissToast } = useToast()
+  const { setScheduledCount } = useAppContext()
 
   useEffect(() => {
     // Load settings from localStorage
@@ -54,6 +56,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       const stats = await api.getStats()
       setPendingCount(stats.pending || 0)
       setPublishedCount(stats.published || 0)
+      setScheduledCount(stats.approved || 0)
     } catch (error) {
       console.error('Failed to fetch stats:', error)
     }

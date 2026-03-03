@@ -14,8 +14,14 @@ export default function ContentPage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [generatedToday, setGeneratedToday] = useState(0)
-  const [dailyLimit, setDailyLimit] = useState(getDailyPostLimit())
+  const [dailyLimit, setDailyLimit] = useState(3)
+  const [mounted, setMounted] = useState(false)
   const { showToast } = useToast()
+
+  useEffect(() => {
+    setMounted(true)
+    setDailyLimit(getDailyPostLimit())
+  }, [])
 
   useEffect(() => {
     fetchData()
@@ -160,7 +166,9 @@ export default function ContentPage() {
         <div className="mb-4 p-3 bg-gray-50 rounded-lg">
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-600">Generated today</span>
-            <span className="font-semibold text-gray-900">{Math.min(generatedToday, dailyLimit)} / {dailyLimit}</span>
+            <span className="font-semibold text-gray-900">
+              {mounted ? `${Math.min(generatedToday, dailyLimit)} / ${dailyLimit}` : `0 / 3`}
+            </span>
           </div>
           <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
             <div
@@ -168,7 +176,11 @@ export default function ContentPage() {
                 "h-full transition-all duration-300",
                 isLimitReached ? "bg-red-500" : "bg-blue-500"
               )}
-              style={{ width: `${Math.min((generatedToday / dailyLimit) * 100, 100)}%` }}
+              style={{
+                width: mounted
+                  ? `${Math.min((generatedToday / dailyLimit) * 100, 100)}%`
+                  : '0%'
+              }}
             />
           </div>
           {isLimitReached && (
@@ -188,7 +200,7 @@ export default function ContentPage() {
         {/* Generate Now Button */}
         <button
           onClick={handleGenerateNow}
-          disabled={isGenerating || isLimitReached}
+          disabled={isGenerating || (mounted && generatedToday >= dailyLimit)}
           className="w-full px-4 py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {isGenerating ? (

@@ -57,9 +57,9 @@ The project includes a production-grade Next.js 14 dashboard called **PostFlow**
 **How it works:**
 - Client-side React application with server-side rendering
 - Connects to n8n via webhook endpoints (`/webhook/get-posts`, `/webhook/post-approval`, etc.)
-- All settings stored in localStorage (n8n URL, posts per page, daily limit)
+- Settings stored in localStorage (n8n URL, posts per page) and database (daily post limit)
 - Safe API layer with robust JSON parsing and error handling
-- Dynamic daily post limit (configurable 1-10, default 3)
+- Dynamic daily post limit (configurable 1-20, default 3, saved to DB via n8n)
 - Daily limit counter filters posts by `created_at` date (only counts today's posts)
 - Manual reset available for testing (localStorage-based, resets daily count to 0)
 
@@ -387,11 +387,12 @@ All settings are in `config.json`:
 - **Virtual environment** - Must be `playwright/venv/` (not `.venv`) for consistency
 - **Flask Action Server** - Runs on port 5050, no timeout limits for long-running browser operations
 - **Timeout Configuration** - 60-second defaults for page operations, no subprocess timeout in Flask server
-- **Dashboard Settings** - All stored in localStorage (n8n URL, posts per page, daily post limit)
+- **Dashboard Settings** - n8n URL and posts per page stored in localStorage; daily post limit stored in both localStorage and database
 - **Dashboard API** - Uses dynamic URL resolution (localStorage → env variable → default)
 - **Safe JSON Parsing** - All API responses use text parsing first, never direct res.json()
 - **Daily Limit Counter** - Filters posts by `created_at` date to count only today's posts (not all-time total)
 - **Manual Reset** - Testing feature allows resetting daily limit via localStorage (`limit_reset_date`)
+- **Settings Persistence** - Daily post limit syncs to database via `/webhook/update-settings` when saved in Settings panel
 
 ## Dashboard API Integration
 
@@ -433,6 +434,13 @@ The dashboard connects to n8n via webhook endpoints:
     "client_id": "hr-pro-001"
   }
   ```
+- `/webhook/update-settings` - Update client settings in database
+  ```json
+  {
+    "client_id": "hr-pro-001",
+    "daily_post_limit": 5
+  }
+  ```
 
 **API Error Handling:**
 - All endpoints return empty arrays/default objects on error
@@ -471,10 +479,12 @@ The dashboard connects to n8n via webhook endpoints:
 - Verify Next.js dev server is running with network access
 
 **Settings not persisting:**
-- Settings are stored in browser localStorage
-- Clear browser cache may reset settings
-- Each browser/device has separate settings
+- n8n URL and posts per page are stored in browser localStorage only
+- Daily post limit is stored in both localStorage and database (synced via n8n webhook)
+- Clear browser cache may reset localStorage settings
+- Each browser/device has separate localStorage settings
 - Check browser console for localStorage errors
+- If daily limit not persisting, verify n8n `/webhook/update-settings` endpoint is working
 
 **n8n can't connect to Ollama:**
 - Use `http://host.docker.internal:11434` (not `localhost`)
