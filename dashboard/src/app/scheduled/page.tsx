@@ -173,7 +173,7 @@ export default function ScheduledPage() {
       if (scheduleMode === 'custom') {
         const dateStr = getDateStr(selectedDate)
         const timeStr = selectedTime === 'custom' ? customTime : selectedTime
-        scheduledFor = new Date(`${dateStr}T${timeStr}:00`).toISOString()
+        scheduledFor = new Date(`${dateStr}T${timeStr}:00+05:00`).toISOString()
       }
 
       // Use submitDecision with approved status to reschedule
