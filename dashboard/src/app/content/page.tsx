@@ -103,7 +103,15 @@ export default function ContentPage() {
 
   const handlePublishNow = async (postId: string) => {
     try {
-      await api.schedulePost(postId, new Date().toISOString())
+      // Schedule for next 6PM PKT slot
+      const nowUTC = new Date()
+      const nowPKT = new Date(nowUTC.getTime() + 5 * 60 * 60 * 1000)
+      const todayPKT = nowPKT.toISOString().split('T')[0]
+      const sixPMPKT = new Date(`${todayPKT}T18:00:00+05:00`)
+      const scheduledTime = sixPMPKT.getTime() > nowUTC.getTime() + 2 * 60 * 1000
+        ? sixPMPKT.toISOString()
+        : new Date(`${new Date(nowPKT.getTime() + 86400000).toISOString().split('T')[0]}T18:00:00+05:00`).toISOString()
+      await api.schedulePost(postId, scheduledTime)
       showToast('Post scheduled for immediate publishing', 'success')
       setApprovedPosts(prev => prev.filter(p => p.id !== postId))
     } catch (error) {
