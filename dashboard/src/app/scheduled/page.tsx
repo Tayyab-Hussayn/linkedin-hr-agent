@@ -10,51 +10,37 @@ import { cn, getPillarColor, formatRelativeTime } from '@/lib/utils'
 import { Sheet } from '@/components/ui/Sheet'
 import Link from 'next/link'
 
-function getTimeUntil(scheduledFor: Date): string {
+function formatScheduledTime(isoStr: string): string {
+  if (!isoStr) return 'Time not set'
+  const date = new Date(isoStr)
   const now = new Date()
-  const diff = scheduledFor.getTime() - now.getTime()
-
-  if (diff < 0) return 'Now'
-
-  const hours = Math.floor(diff / (1000 * 60 * 60))
-  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-
-  if (hours > 24) {
-    const days = Math.floor(hours / 24)
-    return `In ${days}d ${hours % 24}h`
-  }
-
-  if (hours > 0) {
-    return `In ${hours}h ${minutes}m`
-  }
-
-  return `In ${minutes}m`
+  const diffMs = date.getTime() - now.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMins / 60)
+  const diffDays = Math.floor(diffHours / 24)
+  const timeStr = date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+  })
+  if (diffMs <= 0) return 'Publishing soon...'
+  if (diffDays === 0) return `Today at ${timeStr}`
+  if (diffDays === 1) return `Tomorrow at ${timeStr}`
+  return `${date.toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric'
+  })} at ${timeStr}`
 }
 
-function formatScheduledTime(date: Date): string {
-  const today = new Date()
-  const tomorrow = new Date(today)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-
-  const isToday = date.toDateString() === today.toDateString()
-  const isTomorrow = date.toDateString() === tomorrow.toDateString()
-
-  const timeStr = date.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
-  })
-
-  if (isToday) return `Today at ${timeStr}`
-  if (isTomorrow) return `Tomorrow at ${timeStr}`
-
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
-  })
+function getCountdown(isoStr: string): string {
+  if (!isoStr) return ''
+  const diffMs = new Date(isoStr).getTime() - new Date().getTime()
+  if (diffMs <= 0) return 'any moment now'
+  const mins = Math.floor(diffMs / 60000)
+  if (mins < 60) return `in ${mins}m`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `in ${hours}h ${mins % 60}m`
+  const days = Math.floor(hours / 24)
+  return `in ${days}d ${hours % 24}h`
 }
 
 export default function ScheduledPage() {
@@ -63,40 +49,48 @@ export default function ScheduledPage() {
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set())
   const [publishingId, setPublishingId] = useState<string | null>(null)
   const [reschedulePost, setReschedulePost] = useState<Post | null>(null)
-  const [selectedDate, setSelectedDate] = useState<'today' | 'tomorrow'>('today')
-  const [selectedTime, setSelectedTime] = useState<number>(9)
+  const [scheduleMode, setScheduleMode] = useState<'default' | 'custom'>('default')
+  const [selectedDate, setSelectedDate] = useState<'today' | 'tomorrow' | 'day2'>('today')
+  const [selectedTime, setSelectedTime] = useState('18:00')
+  const [customTime, setCustomTime] = useState('')
+  const [tick, setTick] = useState(0)
   const { showToast } = useToast()
   const { setScheduledCount } = useAppContext()
 
-  // Schedule times map (postId -> Date)
-  const [scheduleTimes, setScheduleTimes] = useState<Map<string, Date>>(new Map())
+  function getDefaultSlotDisplay(): string {
+    const now = new Date()
+    const sixPM = new Date()
+    sixPM.setHours(18, 0, 0, 0)
+    if (sixPM.getTime() > now.getTime() + 2 * 60 * 1000) {
+      return 'Today at 6:00 PM'
+    }
+    return 'Tomorrow at 6:00 PM'
+  }
+
+  function getDateStr(mode: string): string {
+    const d = new Date()
+    if (mode === 'tomorrow') d.setDate(d.getDate() + 1)
+    if (mode === 'day2') d.setDate(d.getDate() + 2)
+    return d.toISOString().split('T')[0]
+  }
 
   useEffect(() => {
     fetchScheduledPosts()
+    const interval = setInterval(fetchScheduledPosts, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
-    // Auto-refresh every 60 seconds
-    const interval = setInterval(() => {
-      fetchScheduledPosts()
-    }, 60000)
-
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 60000)
     return () => clearInterval(interval)
   }, [])
 
   const fetchScheduledPosts = async () => {
     setIsLoading(true)
     try {
-      const postsData = await api.getPosts('approved', 20)
+      const postsData = await api.getPosts('scheduled', 20)
       setPosts(postsData)
       setScheduledCount(postsData.length)
-
-      // Initialize schedule times (mock for now - would come from DB)
-      const times = new Map<string, Date>()
-      postsData.forEach((post, index) => {
-        const slot = new Date()
-        slot.setHours(9 + (index * 3), 0, 0, 0)
-        times.set(post.id, slot)
-      })
-      setScheduleTimes(times)
     } catch (error) {
       showToast('Failed to load scheduled posts', 'error')
     } finally {
@@ -164,29 +158,29 @@ export default function ScheduledPage() {
 
   const handleReschedule = (post: Post) => {
     setReschedulePost(post)
-    const currentTime = scheduleTimes.get(post.id) || new Date()
-    const isToday = currentTime.toDateString() === new Date().toDateString()
-    setSelectedDate(isToday ? 'today' : 'tomorrow')
-    setSelectedTime(currentTime.getHours())
+    setScheduleMode('default')
+    setSelectedDate('today')
+    setSelectedTime('18:00')
+    setCustomTime('')
   }
 
   const handleSaveReschedule = async () => {
     if (!reschedulePost) return
 
     try {
-      const newTime = new Date()
-      if (selectedDate === 'tomorrow') {
-        newTime.setDate(newTime.getDate() + 1)
+      let scheduledFor: string | null = null
+
+      if (scheduleMode === 'custom') {
+        const dateStr = getDateStr(selectedDate)
+        const timeStr = selectedTime === 'custom' ? customTime : selectedTime
+        scheduledFor = new Date(`${dateStr}T${timeStr}:00`).toISOString()
       }
-      newTime.setHours(selectedTime, 0, 0, 0)
 
-      await api.schedulePost(reschedulePost.id, newTime.toISOString())
+      // Use submitDecision with approved status to reschedule
+      await api.submitDecision(reschedulePost.id, 'approved', undefined, scheduledFor)
 
-      setScheduleTimes(prev => {
-        const next = new Map(prev)
-        next.set(reschedulePost.id, newTime)
-        return next
-      })
+      // Refresh posts to get updated scheduled_for
+      await fetchScheduledPosts()
 
       setReschedulePost(null)
       showToast('Post rescheduled successfully', 'success')
@@ -245,10 +239,12 @@ export default function ScheduledPage() {
         {posts.map((post) => {
           const pillarIndex = post.topic_pillar.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
           const pillarColor = getPillarColor(pillarIndex)
-          const hook = post.content.split('\n').filter(l => l.trim())[0] || post.content.substring(0, 100)
-          const bodyPreview = post.content.split('\n').filter(l => l.trim()).slice(1).join(' ').substring(0, 150)
-          const scheduledFor = scheduleTimes.get(post.id) || new Date()
-          const timeUntil = getTimeUntil(scheduledFor)
+          const lines = post.content.split('\n').filter(l => l.trim())
+          const preview = lines.slice(0, 3).join(' ').substring(0, 200)
+
+          const scheduledForStr = post.scheduled_for ?? ''
+          const statusText = formatScheduledTime(scheduledForStr)
+          const countdownText = getCountdown(scheduledForStr)
 
           return (
             <div
@@ -263,31 +259,20 @@ export default function ScheduledPage() {
                 <span className={cn('px-3 py-1 text-xs font-semibold rounded-full border', pillarColor)}>
                   {post.topic_pillar}
                 </span>
-                <div className="w-2 h-2 rounded-full bg-green-500" style={{ boxShadow: '0 0 8px rgba(34, 197, 94, 0.5)' }} />
               </div>
 
-              {/* Hook */}
-              <h3 className="font-serif text-lg font-bold leading-snug mb-2 text-gray-900">
-                {hook}
-              </h3>
-
-              {/* Body Preview */}
-              {bodyPreview && (
-                <p className="text-sm text-gray-600 line-clamp-2 mb-4">
-                  {bodyPreview}
-                </p>
-              )}
+              {/* Content Preview */}
+              <p className="text-sm text-gray-700 line-clamp-3 mb-4">
+                {preview}
+              </p>
 
               {/* Schedule Info */}
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
-                <div className="flex items-center gap-2 text-blue-900 mb-1">
+                <div className="flex items-center gap-2 text-blue-900">
                   <Clock className="w-4 h-4" />
                   <span className="text-sm font-semibold">
-                    Scheduled: {formatScheduledTime(scheduledFor)}
+                    Scheduled: {statusText} {countdownText && `(${countdownText})`}
                   </span>
-                </div>
-                <div className="text-xs text-blue-700 ml-6">
-                  {timeUntil}
                 </div>
               </div>
 
@@ -299,13 +284,6 @@ export default function ScheduledPage() {
                   className="flex-1 px-4 py-2.5 bg-green-500 text-white rounded-xl font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {publishingId === post.id ? 'Publishing...' : 'Publish Now'}
-                </button>
-
-                <button
-                  onClick={() => handleReschedule(post)}
-                  className="px-4 py-2.5 bg-blue-50 text-blue-600 border border-blue-200 rounded-xl font-medium hover:bg-blue-100 transition-colors"
-                >
-                  <Calendar className="w-4 h-4" />
                 </button>
 
                 <button
@@ -327,67 +305,160 @@ export default function ScheduledPage() {
         title="Reschedule Post"
       >
         <div className="space-y-6">
-          {/* Date Selector */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Select Day
-            </label>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setSelectedDate('today')}
-                className={cn(
-                  'flex-1 px-4 py-3 rounded-lg font-medium transition-colors',
-                  selectedDate === 'today'
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                )}
-              >
-                Today
-              </button>
-              <button
-                onClick={() => setSelectedDate('tomorrow')}
-                className={cn(
-                  'flex-1 px-4 py-3 rounded-lg font-medium transition-colors',
-                  selectedDate === 'tomorrow'
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                )}
-              >
-                Tomorrow
-              </button>
-            </div>
+          {/* Schedule Mode */}
+          <div className="space-y-3">
+            <button
+              onClick={() => setScheduleMode('default')}
+              className={cn(
+                'w-full px-4 py-3 rounded-xl font-medium transition-all text-left flex items-center gap-3',
+                scheduleMode === 'default'
+                  ? 'bg-blue-500 text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              )}
+            >
+              <div className={cn(
+                'w-5 h-5 rounded-full border-2 flex items-center justify-center',
+                scheduleMode === 'default' ? 'border-white' : 'border-gray-400'
+              )}>
+                {scheduleMode === 'default' && <div className="w-2.5 h-2.5 bg-white rounded-full" />}
+              </div>
+              <div>
+                <div className="font-semibold">Default ({getDefaultSlotDisplay()})</div>
+                <div className={cn('text-xs', scheduleMode === 'default' ? 'text-blue-100' : 'text-gray-500')}>
+                  Auto-scheduled by system
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setScheduleMode('custom')}
+              className={cn(
+                'w-full px-4 py-3 rounded-xl font-medium transition-all text-left flex items-center gap-3',
+                scheduleMode === 'custom'
+                  ? 'bg-blue-500 text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              )}
+            >
+              <div className={cn(
+                'w-5 h-5 rounded-full border-2 flex items-center justify-center',
+                scheduleMode === 'custom' ? 'border-white' : 'border-gray-400'
+              )}>
+                {scheduleMode === 'custom' && <div className="w-2.5 h-2.5 bg-white rounded-full" />}
+              </div>
+              <div>
+                <div className="font-semibold">Custom time</div>
+                <div className={cn('text-xs', scheduleMode === 'custom' ? 'text-blue-100' : 'text-gray-500')}>
+                  Choose specific date and time
+                </div>
+              </div>
+            </button>
           </div>
 
-          {/* Time Selector */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Select Time
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {[9, 12, 15, 18, 21].map((hour) => (
-                <button
-                  key={hour}
-                  onClick={() => setSelectedTime(hour)}
-                  className={cn(
-                    'px-4 py-3 rounded-lg font-medium transition-colors',
-                    selectedTime === hour
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  )}
-                >
-                  {hour > 12 ? `${hour - 12} PM` : `${hour} AM`}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* Custom Time Options */}
+          {scheduleMode === 'custom' && (
+            <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
+              {/* Date Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelectedDate('today')}
+                    className={cn(
+                      'flex-1 px-3 py-2 rounded-lg font-medium text-sm transition-colors',
+                      selectedDate === 'today'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    )}
+                  >
+                    Today
+                  </button>
+                  <button
+                    onClick={() => setSelectedDate('tomorrow')}
+                    className={cn(
+                      'flex-1 px-3 py-2 rounded-lg font-medium text-sm transition-colors',
+                      selectedDate === 'tomorrow'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    )}
+                  >
+                    Tomorrow
+                  </button>
+                  <button
+                    onClick={() => setSelectedDate('day2')}
+                    className={cn(
+                      'flex-1 px-3 py-2 rounded-lg font-medium text-sm transition-colors',
+                      selectedDate === 'day2'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    )}
+                  >
+                    +2 days
+                  </button>
+                </div>
+              </div>
 
-          {/* Schedule Button */}
-          <button
-            onClick={handleSaveReschedule}
-            className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors"
-          >
-            Schedule
-          </button>
+              {/* Time Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Time</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {['09:00', '12:00', '18:00', '21:00'].map((time) => (
+                    <button
+                      key={time}
+                      onClick={() => setSelectedTime(time)}
+                      className={cn(
+                        'px-3 py-2 rounded-lg font-medium text-sm transition-colors',
+                        selectedTime === time
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      )}
+                    >
+                      {time === '09:00' && '9:00 AM'}
+                      {time === '12:00' && '12:00 PM'}
+                      {time === '18:00' && '6:00 PM'}
+                      {time === '21:00' && '9:00 PM'}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setSelectedTime('custom')}
+                    className={cn(
+                      'px-3 py-2 rounded-lg font-medium text-sm transition-colors',
+                      selectedTime === 'custom'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    )}
+                  >
+                    Custom...
+                  </button>
+                </div>
+
+                {selectedTime === 'custom' && (
+                  <input
+                    type="time"
+                    value={customTime}
+                    onChange={(e) => setCustomTime(e.target.value)}
+                    className="mt-2 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex gap-2 pt-2">
+            <button
+              onClick={() => setReschedulePost(null)}
+              className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveReschedule}
+              className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
+            >
+              <Clock className="w-4 h-4" />
+              Reschedule
+            </button>
+          </div>
         </div>
       </Sheet>
     </div>

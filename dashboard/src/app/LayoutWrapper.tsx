@@ -18,6 +18,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const [n8nUrl, setN8nUrl] = useState('')
   const [postsPerPage, setPostsPerPage] = useState(20)
   const [dailyPostLimit, setDailyPostLimit] = useState(3)
+  const [publishingSlots, setPublishingSlots] = useState<string[]>(['18:00'])
   const [isSaving, setIsSaving] = useState(false)
   const { toasts, showToast, dismissToast } = useToast()
   const { setScheduledCount } = useAppContext()
@@ -28,9 +29,17 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       const storedUrl = localStorage.getItem('n8n_url') || config.n8nUrl
       const storedLimit = localStorage.getItem('posts_per_page') || '20'
       const storedDailyLimit = localStorage.getItem('daily_post_limit') || '3'
+      const storedSlots = localStorage.getItem('publishing_slots')
       setN8nUrl(storedUrl)
       setPostsPerPage(parseInt(storedLimit))
       setDailyPostLimit(parseInt(storedDailyLimit))
+      if (storedSlots) {
+        try {
+          setPublishingSlots(JSON.parse(storedSlots))
+        } catch (e) {
+          setPublishingSlots(['18:00'])
+        }
+      }
     }
 
     // Fetch initial stats
@@ -69,16 +78,18 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const handleSaveSettings = async () => {
     setIsSaving(true)
     try {
-      // Save n8n URL and posts per page to localStorage
+      // Save n8n URL, posts per page, and publishing slots to localStorage
       if (typeof window !== 'undefined') {
         localStorage.setItem('n8n_url', n8nUrl)
         localStorage.setItem('posts_per_page', postsPerPage.toString())
         localStorage.setItem('daily_post_limit', dailyPostLimit.toString())
+        localStorage.setItem('publishing_slots', JSON.stringify(publishingSlots))
       }
 
-      // Save daily limit to DB via n8n
+      // Save daily limit and publishing slots to DB via n8n
       const result = await api.updateClientSettings('hr-pro-001', {
-        daily_post_limit: dailyPostLimit
+        daily_post_limit: dailyPostLimit,
+        publishing_slots: publishingSlots
       })
 
       if (result.status === 'ok' || result.message) {
@@ -108,6 +119,18 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     } catch (error) {
       showToast('Connection failed. Check your n8n URL.', 'error')
     }
+  }
+
+  const togglePublishingSlot = (slot: string) => {
+    setPublishingSlots(prev => {
+      if (prev.includes(slot)) {
+        // Don't allow removing the last slot
+        if (prev.length === 1) return prev
+        return prev.filter(s => s !== slot)
+      } else {
+        return [...prev, slot].sort()
+      }
+    })
   }
 
   return (
@@ -176,6 +199,42 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             />
             <p className="text-xs text-gray-500 mt-1">
               Maximum posts to generate per day (Current: {dailyPostLimit} posts/day)
+            </p>
+          </div>
+
+          {/* Publishing Schedule */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Default Publishing Time
+            </label>
+            <p className="text-xs text-gray-500 mb-3">
+              Posts will auto-publish at this time daily
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { time: '09:00', label: '9:00 AM' },
+                { time: '12:00', label: '12:00 PM' },
+                { time: '18:00', label: '6:00 PM' },
+                { time: '21:00', label: '9:00 PM' }
+              ].map(({ time, label }) => (
+                <button
+                  key={time}
+                  onClick={() => togglePublishingSlot(time)}
+                  className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                    publishingSlots.includes(time)
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Selected: {publishingSlots.map(s => {
+                const slot = { '09:00': '9:00 AM', '12:00': '12:00 PM', '18:00': '6:00 PM', '21:00': '9:00 PM' }[s]
+                return slot
+              }).join(', ')}
             </p>
           </div>
 

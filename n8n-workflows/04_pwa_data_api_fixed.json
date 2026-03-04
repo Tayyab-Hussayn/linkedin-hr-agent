@@ -1,0 +1,198 @@
+{
+  "name": "04 - PWA Data API",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "get-posts",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [256, 320],
+      "id": "d76b36d7-81d4-4713-ae30-0112ce1da54e",
+      "name": "PWA Webhook",
+      "webhookId": "197a5048-e111-4d97-b37d-894717197014"
+    },
+    {
+      "parameters": {
+        "jsCode": "const query = $input.first().json.query || {};\nconst status = query.status || 'pending';\nconst limit = parseInt(query.limit || '20');\nconst client_id = query.client_id || null;\n\nconsole.log('PWA API Request — status:', status, 'limit:', limit);\n\nreturn [{\n  json: {\n    status,\n    limit,\n    client_id\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [496, 320],
+      "id": "42e20007-5918-4c89-b881-a9b30dd375fe",
+      "name": "Parse Request"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-stats",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "stats",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [736, 320],
+      "id": "f74a5037-cdb4-44eb-8f2b-ac0b622a8aa5",
+      "name": "Stats or Posts?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  COUNT(CASE WHEN approval_status = 'pending' THEN 1 END)::int as pending,\n  COUNT(CASE WHEN approval_status = 'approved' AND post_status NOT IN ('published','skipped') THEN 1 END)::int as approved,\n  COUNT(CASE WHEN post_status = 'published' THEN 1 END)::int as published,\n  COUNT(CASE WHEN approval_status = 'rejected' THEN 1 END)::int as rejected,\n  COUNT(*)::int as total,\n  (SELECT daily_post_limit FROM clients WHERE id = 'hr-pro-001') as daily_post_limit\nFROM posts;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [976, 192],
+      "id": "06a6717a-ae75-4347-b902-f97dee276b42",
+      "name": "Get Stats",
+      "credentials": {
+        "postgres": {
+          "id": "JsQ6LXHQkw3ru7C2",
+          "name": "LinkedIn Agent DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  p.id,\n  p.client_id,\n  p.content,\n  p.topic_pillar,\n  p.post_format,\n  p.approval_status,\n  p.post_status,\n  p.approval_note,\n  p.scheduled_for,\n  array_length(regexp_split_to_array(trim(p.content), '\\s+'), 1) as estimated_words,\n  p.created_at,\n  p.approved_at,\n  p.published_at,\n  c.name as client_name\nFROM posts p\nJOIN clients c ON c.id = p.client_id\nWHERE\n  CASE\n    WHEN '{{ $json.status }}' = 'pending' THEN\n      p.approval_status = 'pending'\n    WHEN '{{ $json.status }}' = 'approved' OR '{{ $json.status }}' = 'scheduled' THEN\n      p.approval_status = 'approved'\n      AND p.post_status IN ('draft', 'publishing')\n      AND p.scheduled_for IS NOT NULL\n    WHEN '{{ $json.status }}' = 'history' THEN\n      p.post_status = 'published'\n      OR p.post_status = 'skipped'\n      OR p.approval_status = 'rejected'\n    WHEN '{{ $json.status }}' = 'published' THEN\n      p.post_status = 'published'\n    ELSE\n      p.approval_status = 'pending'\n  END\nORDER BY\n  CASE\n    WHEN '{{ $json.status }}' IN ('approved', 'scheduled')\n    THEN p.scheduled_for\n    ELSE p.created_at\n  END ASC\nLIMIT {{ $json.limit }};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [976, 432],
+      "id": "4e766b2d-e72f-494c-8448-2653cf337532",
+      "name": "Get Posts",
+      "credentials": {
+        "postgres": {
+          "id": "JsQ6LXHQkw3ru7C2",
+          "name": "LinkedIn Agent DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nreturn [{\n  json: {\n    type: 'stats',\n    pending: data.pending || 0,\n    approved: data.approved || 0,\n    published: data.published || 0,\n    rejected: data.rejected || 0,\n    total: data.total || 0,\n    daily_post_limit: data.daily_post_limit || 3\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1216, 192],
+      "id": "789207ef-c92c-44ab-a211-3fc55676abdd",
+      "name": "Format Stats"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nif (!items || items.length === 0 || !items[0].json.id) {\n  return [{ json: { result: '[]' } }];\n}\n\nconst posts = items\n  .filter(item => item.json && item.json.id)\n  .map(item => {\n    const p = item.json;\n    return {\n      id: p.id,\n      client_id: p.client_id,\n      client_name: p.client_name || '',\n      content: p.content || '',\n      topic_pillar: p.topic_pillar || 'General',\n      post_format: p.post_format || 'text',\n      approval_status: p.approval_status,\n      post_status: p.post_status,\n      approval_note: p.approval_note || null,\n      scheduled_for: p.scheduled_for || null,\n      estimated_words: parseInt(p.estimated_words) || 0,\n      created_at: p.created_at,\n      approved_at: p.approved_at || null,\n      published_at: p.published_at || null\n    };\n  });\n\nreturn [{ json: { result: JSON.stringify(posts) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1216, 432],
+      "id": "f89eb5e4-1f51-4c21-8e26-6c7151f1e6bb",
+      "name": "Format Posts"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {"name": "Access-Control-Allow-Origin", "value": "*"},
+              {"name": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS"},
+              {"name": "Access-Control-Allow-Headers", "value": "Content-Type"},
+              {"name": "Cache-Control", "value": "no-cache"}
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1456, 192],
+      "id": "c1d3f275-b9fb-4028-b7f7-1b5bad9a36d8",
+      "name": "Respond Stats"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.result }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {"name": "Access-Control-Allow-Origin", "value": "*"},
+              {"name": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS"},
+              {"name": "Access-Control-Allow-Headers", "value": "Content-Type"},
+              {"name": "Cache-Control", "value": "no-cache"},
+              {"name": "Content-Type", "value": "application/json"}
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1456, 432],
+      "id": "35edb405-1a74-40ac-9696-28627c6e3d07",
+      "name": "Respond Posts"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "PWA Webhook": {
+      "main": [[{"node": "Parse Request", "type": "main", "index": 0}]]
+    },
+    "Parse Request": {
+      "main": [[{"node": "Stats or Posts?", "type": "main", "index": 0}]]
+    },
+    "Stats or Posts?": {
+      "main": [
+        [{"node": "Get Stats", "type": "main", "index": 0}],
+        [{"node": "Get Posts", "type": "main", "index": 0}]
+      ]
+    },
+    "Get Stats": {
+      "main": [[{"node": "Format Stats", "type": "main", "index": 0}]]
+    },
+    "Get Posts": {
+      "main": [[{"node": "Format Posts", "type": "main", "index": 0}]]
+    },
+    "Format Stats": {
+      "main": [[{"node": "Respond Stats", "type": "main", "index": 0}]]
+    },
+    "Format Posts": {
+      "main": [[{"node": "Respond Posts", "type": "main", "index": 0}]]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "7c50e683-5f31-4511-8316-bd6ec3aad978",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "497400c4566cd6214d30d36fa048e8a348f529be3d0ded3902cce04e13760ef2"
+  },
+  "id": "flYrJwy51biRN4lw",
+  "tags": []
+}

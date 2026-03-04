@@ -73,17 +73,39 @@ export default function QueuePage() {
     }
   }
 
-  const handleApprove = async (postId: string) => {
+  const handleApprove = async (postId: string, scheduledFor?: string | null) => {
     setRemovingIds(prev => new Set(prev).add(postId))
     try {
-      // Just approve — n8n sets scheduled_for automatically
-      await api.submitDecision(postId, 'approved')
+      // Just approve — n8n sets scheduled_for automatically (or uses custom time)
+      const result = await api.submitDecision(postId, 'approved', undefined, scheduledFor)
 
-      // Remove from queue with animation
-      setPosts(prev => prev.filter(p => p.id !== postId))
+      // Wait for animation to complete before removing from list
+      setTimeout(() => {
+        setPosts(prev => prev.filter(p => p.id !== postId))
+        setRemovingIds(prev => {
+          const next = new Set(prev)
+          next.delete(postId)
+          return next
+        })
+      }, 300)
 
-      // Show success toast
-      showToast('Post scheduled for publishing ✓', 'success')
+      // Show scheduled time in toast with better formatting
+      let display = 'next available slot'
+      if (result?.scheduled_display) {
+        display = result.scheduled_display
+      } else if (result?.scheduled_for) {
+        try {
+          const schedDate = new Date(result.scheduled_for)
+          display = schedDate.toLocaleString('en-US', {
+            weekday: 'short',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        } catch (e) {
+          display = 'next available slot'
+        }
+      }
+      showToast(`Scheduled for ${display} ✓`, 'success')
 
       // Trigger scheduled tab pulse animation
       triggerScheduledPulse()
@@ -92,13 +114,12 @@ export default function QueuePage() {
       await loadStats()
 
     } catch(e) {
-      showToast('Failed to approve post', 'error')
-    } finally {
       setRemovingIds(prev => {
         const next = new Set(prev)
         next.delete(postId)
         return next
       })
+      showToast('Failed to approve post', 'error')
     }
   }
 
@@ -150,12 +171,8 @@ export default function QueuePage() {
       // Mark as removing to trigger animation
       setRemovingIds(prev => new Set(prev).add(editingPost.id))
 
-      // Step 1: Mark as approved with edited content
-      await api.submitDecision(editingPost.id, 'approved', editedContent)
-
-      // Step 2: Assign default schedule time
-      const scheduledTime = getNextScheduleSlot()
-      await api.schedulePost(editingPost.id, scheduledTime.toISOString())
+      // Step 1: Mark as approved with edited content (n8n sets scheduled_for automatically)
+      const result = await api.submitDecision(editingPost.id, 'approved', editedContent, null)
 
       // Wait for animation to complete
       setTimeout(() => {
@@ -175,7 +192,9 @@ export default function QueuePage() {
       }, 300)
 
       setEditingPost(null)
-      showToast('Post edited and scheduled!', 'success')
+
+      const display = result.scheduled_display || 'next available slot'
+      showToast(`Post edited and scheduled for ${display}!`, 'success')
 
       // Trigger Scheduled tab animation
       triggerScheduledPulse()

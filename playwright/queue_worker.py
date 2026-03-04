@@ -1,9 +1,9 @@
 """
-queue_worker.py - Scheduled Post Publisher
-Runs as a standalone service (systemd).
-Polls DB every 60 seconds for posts due to publish.
-Spawns Playwright to publish them.
-Completely independent of Flask and n8n.
+queue_worker.py - Scheduled Post Publisher v3
+- Strict scheduled_for <= NOW() check
+- Proper retry with backoff
+- Daily cleanup via DB function
+- Dead letter queue for permanently failed posts
 """
 
 import time
@@ -14,7 +14,6 @@ import psycopg2
 import psycopg2.extras
 from datetime import datetime
 
-# Configuration
 DB_CONFIG = {
     "host": "localhost",
     "port": 5433,
@@ -24,126 +23,194 @@ DB_CONFIG = {
 }
 
 PLAYWRIGHT_DIR = "/home/krawin/exp.code/linkedin-hr-agent/playwright"
-POLL_INTERVAL = 60
-MAX_RETRIES = 3
-RETRY_DELAY = 300
+POLL_INTERVAL  = 60    # seconds between publish checks
+MAX_RETRIES    = 3     # max publish attempts per post
+CLEANUP_EVERY  = 1440  # run cleanup every 1440 cycles = ~24 hours
 
-# Logging
+# ── Logging ───────────────────────────────────────────────────────────────────
+
 def log(level, msg):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] [{level}] {msg}", flush=True)
 
-def info(msg):  log("INFO", msg)
-def warn(msg):  log("WARN", msg)
+def info(msg):  log("INFO",  msg)
+def warn(msg):  log("WARN",  msg)
 def error(msg): log("ERROR", msg)
 
-# Database
+# ── Database ──────────────────────────────────────────────────────────────────
+
 def get_db():
     return psycopg2.connect(**DB_CONFIG)
 
 def get_due_posts():
+    """
+    Strict conditions — ALL must be true:
+    1. approval_status = approved
+    2. post_status = draft
+    3. scheduled_for IS NOT NULL
+    4. scheduled_for <= NOW()
+    5. retry_count < MAX_RETRIES
+    """
     try:
         conn = get_db()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
-            SELECT 
-                p.id,
-                p.client_id,
-                p.content,
-                p.post_format,
-                p.topic_pillar,
-                p.scheduled_for,
-                p.retry_count,
-                c.linkedin_email,
-                c.linkedin_password,
+            SELECT
+                p.id, p.client_id, p.content, p.post_format,
+                p.topic_pillar, p.scheduled_for,
+                COALESCE(p.retry_count, 0) as retry_count,
+                c.linkedin_email, c.linkedin_password,
                 c.name as client_name
             FROM posts p
             JOIN clients c ON c.id = p.client_id
-            WHERE 
+            WHERE
                 p.approval_status = 'approved'
-                AND p.post_status = 'draft'
-                AND (
-                    p.scheduled_for IS NULL 
-                    OR p.scheduled_for <= NOW()
-                )
-                AND (p.retry_count IS NULL OR p.retry_count < %s)
-            ORDER BY p.scheduled_for ASC NULLS FIRST
+                AND p.post_status  = 'draft'
+                AND p.scheduled_for IS NOT NULL
+                AND p.scheduled_for <= NOW()
+                AND COALESCE(p.retry_count, 0) < %s
+            ORDER BY p.scheduled_for ASC
             LIMIT 5
         """, (MAX_RETRIES,))
         posts = cur.fetchall()
-        cur.close()
-        conn.close()
+        cur.close(); conn.close()
         return [dict(p) for p in posts]
     except Exception as e:
         error(f"Failed to fetch due posts: {e}")
         return []
 
-def update_post_status(post_id, status, increment_retry=False):
+def get_upcoming_posts():
     try:
         conn = get_db()
-        cur = conn.cursor()
-        if status == 'published':
-            cur.execute("""
-                UPDATE posts 
-                SET post_status = %s, 
-                    published_at = NOW(),
-                    approval_status = 'approved'
-                WHERE id = %s
-            """, (status, post_id))
-        elif increment_retry:
-            cur.execute("""
-                UPDATE posts 
-                SET post_status = 'draft',
-                    retry_count = COALESCE(retry_count, 0) + 1
-                WHERE id = %s
-            """, (post_id,))
-        else:
-            cur.execute("""
-                UPDATE posts SET post_status = %s WHERE id = %s
-            """, (status, post_id))
-        conn.commit()
-        cur.close()
-        conn.close()
-        info(f"Post {post_id[:8]}... status updated to {status}")
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT p.id, p.topic_pillar, p.scheduled_for,
+                   COALESCE(p.retry_count,0) as retry_count,
+                   c.name as client_name
+            FROM posts p
+            JOIN clients c ON c.id = p.client_id
+            WHERE
+                p.approval_status = 'approved'
+                AND p.post_status  = 'draft'
+                AND p.scheduled_for IS NOT NULL
+                AND p.scheduled_for > NOW()
+            ORDER BY p.scheduled_for ASC
+            LIMIT 5
+        """)
+        posts = cur.fetchall()
+        cur.close(); conn.close()
+        return [dict(p) for p in posts]
     except Exception as e:
-        error(f"DB update failed for {post_id}: {e}")
+        return []
 
 def mark_publishing(post_id):
+    """Atomic lock — prevents double-publishing"""
     try:
         conn = get_db()
-        cur = conn.cursor()
+        cur  = conn.cursor()
         cur.execute("""
-            UPDATE posts 
+            UPDATE posts
             SET post_status = 'publishing'
-            WHERE id = %s AND post_status = 'draft'
+            WHERE id = %s
+              AND post_status     = 'draft'
+              AND approval_status = 'approved'
+              AND scheduled_for  <= NOW()
             RETURNING id
         """, (post_id,))
         result = cur.fetchone()
-        conn.commit()
-        cur.close()
-        conn.close()
+        conn.commit(); cur.close(); conn.close()
         return result is not None
     except Exception as e:
         error(f"Failed to lock post {post_id}: {e}")
         return False
 
-# Publisher
+def update_post_published(post_id):
+    try:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute("""
+            UPDATE posts
+            SET post_status = 'published', published_at = NOW()
+            WHERE id = %s
+        """, (post_id,))
+        conn.commit(); cur.close(); conn.close()
+        info(f"Post {post_id[:8]}... → published")
+    except Exception as e:
+        error(f"DB update failed for {post_id}: {e}")
+
+def update_post_failed(post_id, retry_count):
+    """On failure: increment retry, schedule backoff, or mark permanently failed"""
+    next_retry = retry_count + 1
+    try:
+        conn = get_db()
+        cur  = conn.cursor()
+        if next_retry >= MAX_RETRIES:
+            # Permanently failed — dead letter
+            cur.execute("""
+                UPDATE posts
+                SET post_status   = 'failed',
+                    retry_count   = %s,
+                    approval_note = 'Max retries exhausted after ' || %s || ' attempts'
+                WHERE id = %s
+            """, (next_retry, next_retry, post_id))
+            warn(f"Post {post_id[:8]}... permanently failed after {next_retry} attempts")
+        else:
+            # Backoff: retry_1=10min, retry_2=30min, retry_3=60min
+            backoff_minutes = [10, 30, 60][min(next_retry - 1, 2)]
+            cur.execute("""
+                UPDATE posts
+                SET post_status   = 'draft',
+                    retry_count   = %s,
+                    scheduled_for = NOW() + INTERVAL '%s minutes'
+                WHERE id = %s
+            """, (next_retry, backoff_minutes, post_id))
+            info(f"Post {post_id[:8]}... retry {next_retry}/{MAX_RETRIES} in {backoff_minutes} min")
+        conn.commit(); cur.close(); conn.close()
+    except Exception as e:
+        error(f"DB retry update failed for {post_id}: {e}")
+
+def run_cleanup():
+    """Call the DB cleanup function"""
+    try:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute("SELECT cleanup_posts();")
+        conn.commit(); cur.close(); conn.close()
+        info("Daily cleanup completed")
+    except Exception as e:
+        error(f"Cleanup failed: {e}")
+
+def ensure_schema():
+    try:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS scheduled_for TIMESTAMP;")
+        cur.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS retry_count INT DEFAULT 0;")
+        conn.commit(); cur.close(); conn.close()
+        info("Schema check complete")
+    except Exception as e:
+        error(f"Schema check failed: {e}")
+
+# ── Publisher ─────────────────────────────────────────────────────────────────
+
 def publish_post(post):
-    post_id = post['id']
+    post_id     = post['id']
+    retry_count = post.get('retry_count', 0)
     client_name = post.get('client_name', 'unknown')
 
-    info(f"Publishing post {post_id[:8]}... for {client_name}")
-    info(f"Topic: {post.get('topic_pillar', 'unknown')}")
+    attempt_label = f"attempt {retry_count + 1}/{MAX_RETRIES}"
+    info(f"Publishing {post_id[:8]}... for {client_name} [{attempt_label}]")
+    info(f"Topic: {post.get('topic_pillar')} | Scheduled: {post.get('scheduled_for')}")
 
     if not mark_publishing(post_id):
-        warn(f"Post {post_id[:8]}... already being processed - skipping")
+        warn(f"Post {post_id[:8]}... already locked — skipping")
         return
 
     payload = {
-        "action": "post",
-        "post_id": post_id,
-        "content": post['content'],
-        "email": post['linkedin_email'],
+        "action":   "post",
+        "post_id":  post_id,
+        "content":  post['content'],
+        "email":    post['linkedin_email'],
         "password": post['linkedin_password']
     }
 
@@ -160,9 +227,8 @@ def publish_post(post):
             cwd=PLAYWRIGHT_DIR
         )
 
-        output_lines = result.stdout.strip().split('\n')
         action_result = {}
-        for line in output_lines:
+        for line in result.stdout.strip().split('\n'):
             try:
                 parsed = json.loads(line)
                 if 'status' in parsed:
@@ -171,50 +237,66 @@ def publish_post(post):
                 pass
 
         if result.returncode == 0 and action_result.get('status') == 'ok':
-            update_post_status(post_id, 'published')
-            info(f"SUCCESS: Post {post_id[:8]}... published")
+            update_post_published(post_id)
+            info(f"SUCCESS: {post_id[:8]}... published to LinkedIn")
         else:
-            error_msg = action_result.get('message', result.stderr[:200])
-            error(f"FAILED: Post {post_id[:8]}... - {error_msg}")
-            update_post_status(post_id, 'failed', increment_retry=True)
+            err_msg = action_result.get('message', result.stderr[:200])
+            error(f"FAILED: {post_id[:8]}... — {err_msg}")
+            update_post_failed(post_id, retry_count)
 
     except Exception as e:
         error(f"Exception publishing {post_id[:8]}...: {e}")
-        update_post_status(post_id, 'failed', increment_retry=True)
+        update_post_failed(post_id, retry_count)
 
-# Schema Migration
-def ensure_schema():
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS scheduled_for TIMESTAMP;")
-        cur.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS retry_count INT DEFAULT 0;")
-        cur.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMP;")
-        conn.commit()
-        cur.close()
-        conn.close()
-        info("Schema check complete")
-    except Exception as e:
-        error(f"Schema migration failed: {e}")
+# ── Main Loop ─────────────────────────────────────────────────────────────────
 
-# Main Loop
 def main():
-    info("PostFlow Queue Worker starting...")
-    info(f"Poll interval: {POLL_INTERVAL}s | Max retries: {MAX_RETRIES}")
-    info(f"Playwright dir: {PLAYWRIGHT_DIR}")
+    info("=" * 55)
+    info("  PostFlow Queue Worker v3")
+    info(f"  Poll: {POLL_INTERVAL}s | Retries: {MAX_RETRIES} | Cleanup: every {CLEANUP_EVERY} cycles")
+    info("=" * 55)
 
     ensure_schema()
-    info("Worker ready - polling for scheduled posts")
 
+    # Show upcoming on startup
+    upcoming = get_upcoming_posts()
+    if upcoming:
+        info(f"Upcoming scheduled posts ({len(upcoming)}):")
+        for p in upcoming:
+            retry_info = f" [retry {p['retry_count']}]" if p['retry_count'] > 0 else ""
+            info(f"  [{p['topic_pillar']}] at {p['scheduled_for']}{retry_info}")
+    else:
+        info("No upcoming posts — waiting for approvals")
+
+    info("Worker ready — strict schedule enforcement active")
+
+    cycle = 0
     while True:
         try:
+            cycle += 1
+
+            # Run cleanup once per day
+            if cycle % CLEANUP_EVERY == 0:
+                info(f"[Cycle {cycle}] Running daily cleanup...")
+                run_cleanup()
+
             due_posts = get_due_posts()
+
             if due_posts:
-                info(f"Found {len(due_posts)} post(s) due to publish")
+                info(f"[Cycle {cycle}] {len(due_posts)} post(s) due — publishing")
                 for post in due_posts:
                     publish_post(post)
             else:
-                info("No posts due - sleeping")
+                if cycle % 5 == 0:
+                    upcoming = get_upcoming_posts()
+                    if upcoming:
+                        next_p = upcoming[0]
+                        info(f"[Cycle {cycle}] Next post: [{next_p['topic_pillar']}] at {next_p['scheduled_for']}")
+                    else:
+                        info(f"[Cycle {cycle}] Queue empty — sleeping")
+                else:
+                    info(f"[Cycle {cycle}] No posts due — sleeping {POLL_INTERVAL}s")
+
         except KeyboardInterrupt:
             info("Shutting down gracefully...")
             sys.exit(0)
