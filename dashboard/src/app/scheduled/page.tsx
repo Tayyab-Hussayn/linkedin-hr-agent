@@ -68,10 +68,22 @@ export default function ScheduledPage() {
   }
 
   function getDateStr(mode: string): string {
-    const d = new Date()
-    if (mode === 'tomorrow') d.setDate(d.getDate() + 1)
-    if (mode === 'day2') d.setDate(d.getDate() + 2)
-    return d.toISOString().split('T')[0]
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = now.getMonth()
+    const d = now.getDate()
+    const local = new Date(y, m, d) // midnight local time
+    if (mode === 'tomorrow') local.setDate(local.getDate() + 1)
+    if (mode === 'day2') local.setDate(local.getDate() + 2)
+    return `${local.getFullYear()}-${String(local.getMonth()+1).padStart(2,'0')}-${String(local.getDate()).padStart(2,'0')}`
+  }
+
+  function buildScheduledISO(dateStr: string, time24h: string): string {
+    const [year, month, day] = dateStr.split('-').map(Number)
+    const [hour, minute] = time24h.split(':').map(Number)
+    const localDate = new Date(year, month - 1, day, hour, minute, 0, 0)
+    console.log('buildScheduledISO:', dateStr, time24h, '→', localDate.toISOString())
+    return localDate.toISOString()
   }
 
   useEffect(() => {
@@ -101,29 +113,12 @@ export default function ScheduledPage() {
   const handlePublishNow = async (postId: string) => {
     setPublishingId(postId)
     try {
-      setRemovingIds(prev => new Set(prev).add(postId))
-
-      // This would trigger immediate publishing
-      await api.submitDecision(postId, 'approved')
-
-      setTimeout(() => {
-        setPosts(prev => prev.filter(p => p.id !== postId))
-        setRemovingIds(prev => {
-          const next = new Set(prev)
-          next.delete(postId)
-          return next
-        })
-        setScheduledCount(posts.length - 1)
-      }, 300)
-
-      showToast('Publishing now...', 'success')
-    } catch (error) {
-      setRemovingIds(prev => {
-        const next = new Set(prev)
-        next.delete(postId)
-        return next
-      })
-      showToast('Failed to publish post', 'error')
+      await api.publishNow(postId)
+      // Remove from scheduled list optimistically
+      setPosts(prev => prev.filter(p => p.id !== postId))
+      showToast('Publishing now — will appear on LinkedIn within 60 seconds', 'success')
+    } catch(e) {
+      showToast('Failed to trigger publish', 'error')
     } finally {
       setPublishingId(null)
     }
@@ -173,7 +168,7 @@ export default function ScheduledPage() {
       if (scheduleMode === 'custom') {
         const dateStr = getDateStr(selectedDate)
         const timeStr = selectedTime === 'custom' ? customTime : selectedTime
-        scheduledFor = new Date(`${dateStr}T${timeStr}:00+05:00`).toISOString()
+        scheduledFor = buildScheduledISO(dateStr, timeStr)
       }
 
       // Use submitDecision with approved status to reschedule

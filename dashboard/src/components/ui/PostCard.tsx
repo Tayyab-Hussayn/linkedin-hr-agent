@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ThumbsUp, Edit3, ThumbsDown, Loader2, Clock } from 'lucide-react'
 import { Post } from '@/lib/types'
 import { formatRelativeTime, getStatusColor, getPillarColor, cn } from '@/lib/utils'
@@ -28,7 +28,7 @@ export function PostCard({
   const [showScheduler, setShowScheduler] = useState(false)
   const [scheduleMode, setScheduleMode] = useState<'default' | 'custom'>('default')
   const [selectedDate, setSelectedDate] = useState<'today' | 'tomorrow' | 'day2'>('today')
-  const [selectedTime, setSelectedTime] = useState('18:00')
+  const [selectedTime, setSelectedTime] = useState('21:00')
   const [customTime, setCustomTime] = useState('')
 
   function getDefaultSlotDisplay(): string {
@@ -41,11 +41,23 @@ export function PostCard({
     return 'Tomorrow at 6:00 PM'
   }
 
-  function getDateStr(mode: string): string {
-    const d = new Date()
-    if (mode === 'tomorrow') d.setDate(d.getDate() + 1)
-    if (mode === 'day2') d.setDate(d.getDate() + 2)
-    return d.toISOString().split('T')[0]
+  function getDateStr(mode: 'today' | 'tomorrow' | 'day2'): string {
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = now.getMonth()
+    const d = now.getDate()
+    const local = new Date(y, m, d) // midnight local time
+    if (mode === 'tomorrow') local.setDate(local.getDate() + 1)
+    if (mode === 'day2') local.setDate(local.getDate() + 2)
+    return `${local.getFullYear()}-${String(local.getMonth()+1).padStart(2,'0')}-${String(local.getDate()).padStart(2,'0')}`
+  }
+
+  function buildScheduledISO(dateStr: string, time24h: string): string {
+    const [year, month, day] = dateStr.split('-').map(Number)
+    const [hour, minute] = time24h.split(':').map(Number)
+    const localDate = new Date(year, month - 1, day, hour, minute, 0, 0)
+    console.log('buildScheduledISO:', dateStr, time24h, '→', localDate.toISOString())
+    return localDate.toISOString()
   }
 
   const isSlotPast = (dateMode: string, timeStr: string): boolean => {
@@ -56,22 +68,37 @@ export function PostCard({
     return slot.getTime() <= new Date().getTime() + 2 * 60 * 1000
   }
 
-  const getDefaultSelection = () => {
-    const slots = ['09:00', '12:00', '18:00', '21:00']
+  function getDefaultSlot(): { date: 'today' | 'tomorrow', time: string } {
+    const now = new Date()
+    const slots = ['09:00', '12:00', '15:00', '18:00', '21:00']
+
     for (const slot of slots) {
-      if (!isSlotPast('today', slot)) {
+      const [hour, minute] = slot.split(':').map(Number)
+      const slotTime = new Date(
+        now.getFullYear(), now.getMonth(), now.getDate(),
+        hour, minute, 0, 0
+      )
+      // Slot must be more than 2 minutes in future
+      if (slotTime.getTime() > now.getTime() + 2 * 60 * 1000) {
         return { date: 'today', time: slot }
       }
     }
+    // All slots passed today — tomorrow 9am
     return { date: 'tomorrow', time: '09:00' }
   }
 
   const handleApproveClick = () => {
-    const defaultSel = getDefaultSelection()
-    setSelectedDate(defaultSel.date as 'today' | 'tomorrow' | 'day2')
-    setSelectedTime(defaultSel.time)
     setShowScheduler(true)
   }
+
+  useEffect(() => {
+    if (showScheduler) {
+      const def = getDefaultSlot()
+      setSelectedDate(def.date)
+      setSelectedTime(def.time)
+      setScheduleMode('default')
+    }
+  }, [showScheduler])
 
   const handleConfirmSchedule = async () => {
     if (!onApprove) return
@@ -82,10 +109,19 @@ export function PostCard({
       if (scheduleMode === 'default') {
         await onApprove(post.id, null)
       } else {
-        const dateStr = getDateStr(selectedDate)
         const timeStr = selectedTime === 'custom' ? customTime : selectedTime
-        // Append PKT offset so time is interpreted correctly
-        const isoStr = new Date(`${dateStr}T${timeStr}:00+05:00`).toISOString()
+        const dateStr = getDateStr(selectedDate)
+        const isoStr = buildScheduledISO(dateStr, timeStr)
+
+        console.log('Schedule debug:', {
+          selectedDate,
+          selectedTime,
+          customTime,
+          timeStr,
+          dateStr,
+          isoStr
+        })
+
         await onApprove(post.id, isoStr)
       }
     } catch (error) {
@@ -342,7 +378,27 @@ export function PostCard({
                   <input
                     type="time"
                     value={customTime}
-                    onChange={(e) => setCustomTime(e.target.value)}
+                    onChange={e => {
+                      const val = e.target.value // e.g. "22:19"
+                      setCustomTime(val)
+                      setSelectedTime('custom')
+
+                      if (val && val.includes(':')) {
+                        const [hour, minute] = val.split(':').map(Number)
+                        const now = new Date()
+                        const todaySlot = new Date(
+                          now.getFullYear(), now.getMonth(), now.getDate(),
+                          hour, minute, 0, 0
+                        )
+                        // If this custom time is still 2+ minutes in future today
+                        // automatically switch date to today
+                        if (todaySlot.getTime() > now.getTime() + 2 * 60 * 1000) {
+                          setSelectedDate('today')
+                        } else {
+                          setSelectedDate('tomorrow')
+                        }
+                      }
+                    }}
                     className="mt-2 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 )}

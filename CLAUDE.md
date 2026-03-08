@@ -46,22 +46,42 @@ The project includes a production-grade Next.js 14 dashboard called **PostFlow**
 
 **Features:**
 - **Queue Page** - Review, approve, reject, and edit pending posts with animated card removal
+- **Scheduled Page** - View posts scheduled for future publishing with countdown timers and publish controls
+  - "Publish Now" button updates `scheduled_for` to NOW() so queue worker picks it up within 60 seconds
+  - Does not re-approve already-approved posts (avoids n8n rejection errors)
 - **History Page** - View all approved, rejected, and published posts
 - **Content Page** - Generate posts on-demand, view scheduled posts, track daily generation limits
+  - Auto-refreshes stats every 30 seconds
+  - Refreshes on page visibility change
+  - Uses `generated_today` from DB (counts only today's posts)
+  - Daily limit synced from database (source of truth)
+  - Displays current plan name and respects plan permissions
+  - "Generate Now" button respects `can_generate_now` plan flag
 - **Analytics Page** - Health score, stats overview, daily activity charts, pillar performance, insights
 - **Settings Panel** - Configure n8n URL, posts per page, daily post limit
+  - Daily limit loaded from API (database as source of truth)
+  - Shows current plan info (plan name, default limit)
+  - Allows override of plan's default daily limit
+  - Re-fetches stats after save to confirm changes
 - **Responsive Design** - Desktop sidebar navigation + mobile bottom tab bar
 - **Real-time Updates** - Auto-refresh on visibility change, live stats tracking
 - **Toast Notifications** - User feedback for all actions
+- **Smart Schedule Picker** - Intelligent date/time selection that prevents past times and auto-adjusts dates
 
 **How it works:**
 - Client-side React application with server-side rendering
 - Connects to n8n via webhook endpoints (`/webhook/get-posts`, `/webhook/post-approval`, etc.)
-- Settings stored in localStorage (n8n URL, posts per page) and database (daily post limit)
+- Settings stored in localStorage (n8n URL, posts per page) and database (daily post limit via plans system)
 - Safe API layer with robust JSON parsing and error handling
-- Dynamic daily post limit (configurable 1-20, default 3, saved to DB via n8n)
+- **Plans System Integration** - All limits and permissions come from plans table in database
+  - Stats API returns plan info: `plan_name`, `can_schedule`, `can_analytics`, `can_generate_now`, `ai_model`, `monthly_post_limit`
+  - Daily limit can be overridden per client (stored in `limit_override_daily` column)
+  - Database is source of truth, localStorage used only as cache
 - Daily limit counter filters posts by `created_at` date (only counts today's posts)
-- Manual reset available for testing (localStorage-based, resets daily count to 0)
+- Manual reset available for testing (deletes today's posts from DB via n8n webhook)
+- **Timezone-aware scheduling** - Uses browser's local timezone, stores as UTC in database
+- **Smart schedule picker** - Automatically prevents past times, suggests next available slot
+- **Local date construction** - No hardcoded timezone offsets, works globally
 
 **Access:**
 - Desktop: `http://localhost:3000`
@@ -83,6 +103,7 @@ linkedin-hr-agent/
 │   ├── src/
 │   │   ├── app/               # Next.js app router pages
 │   │   │   ├── queue/         # Queue page (approve/reject posts)
+│   │   │   ├── scheduled/     # Scheduled page (view/manage scheduled posts)
 │   │   │   ├── history/       # History page (past posts)
 │   │   │   ├── content/       # Content page (generate posts)
 │   │   │   ├── analytics/     # Analytics page (stats & insights)
@@ -307,11 +328,158 @@ In an HTTP Request node:
 The database uses plain SQL with JSONB for flexible data storage. Key tables:
 
 - **clients** - LinkedIn accounts being managed
+  - Contains `plan_id` (foreign key to plans table)
+  - Contains `limit_override_daily` (optional override of plan's default daily limit)
+- **plans** - Subscription plans with limits and permissions
+  - `plan_name` - Plan name (e.g., "Starter", "Pro", "Enterprise")
+  - `daily_post_limit` - Default daily post limit for this plan
+  - `monthly_post_limit` - Monthly post limit
+  - `can_schedule` - Boolean, whether scheduling is allowed
+  - `can_analytics` - Boolean, whether analytics access is allowed
+  - `can_generate_now` - Boolean, whether manual generation is allowed
+  - `ai_model` - AI model name for this plan
 - **client_profiles** - CV data, tone analysis, content strategy (JSONB)
 - **posts** - Content with approval and publishing status
 - **engagement_log** - Record of all LinkedIn actions
 
 All IDs are TEXT (UUIDs as strings). Timestamps use PostgreSQL's TIMESTAMP type.
+
+**Plans System Logic:**
+- Each client has a `plan_id` linking to the plans table
+- Daily limit is determined by: `client.limit_override_daily ?? plan.daily_post_limit`
+- Stats API joins clients and plans tables to return all plan information
+- Dashboard respects plan permissions (e.g., disables "Generate Now" if `can_generate_now = false`)
+
+## Plans System
+
+The application uses a flexible plans system to manage limits and permissions per client.
+
+**Architecture:**
+```
+plans table (plan definitions)
+  ↓ (plan_id foreign key)
+clients table (client overrides)
+  ↓ (stats API joins both)
+Dashboard (respects limits & permissions)
+```
+
+**How It Works:**
+
+1. **Plan Definitions** - The `plans` table defines subscription tiers:
+   - Starter: 3 posts/day, basic features
+   - Pro: 10 posts/day, scheduling, analytics
+   - Enterprise: 20 posts/day, all features, custom AI model
+
+2. **Client Overrides** - Each client can override their plan's daily limit:
+   - `clients.limit_override_daily` overrides `plans.daily_post_limit`
+   - Useful for custom agreements or temporary adjustments
+   - Set via Settings panel or directly in database
+
+3. **Stats API Integration** - The `/webhook/get-posts?status=stats` endpoint:
+   - Joins `clients` and `plans` tables
+   - Returns merged data: plan defaults + client overrides
+   - Dashboard uses this as single source of truth
+
+4. **Dashboard Behavior:**
+   - Content page shows plan name badge (e.g., "Starter Plan")
+   - "Generate Now" button disabled if `can_generate_now = false`
+   - Settings panel shows current plan and allows override
+   - All limits loaded from API, no hardcoded defaults
+
+5. **n8n Workflow Requirements:**
+   - Stats endpoint must join clients and plans tables
+   - Must return all plan fields: `plan_name`, `can_schedule`, `can_analytics`, `can_generate_now`, `ai_model`, `monthly_post_limit`
+   - Daily limit logic: `COALESCE(clients.limit_override_daily, plans.daily_post_limit)`
+
+**Example Stats Query:**
+```sql
+SELECT
+  COUNT(CASE WHEN approval_status = 'pending' THEN 1 END)::int as pending,
+  COUNT(CASE WHEN approval_status = 'approved' AND post_status NOT IN ('published','skipped') THEN 1 END)::int as approved,
+  COUNT(CASE WHEN post_status = 'published' THEN 1 END)::int as published,
+  COUNT(CASE WHEN approval_status = 'rejected' THEN 1 END)::int as rejected,
+  COUNT(*)::int as total,
+  COUNT(CASE WHEN created_at >= CURRENT_DATE THEN 1 END)::int as generated_today
+FROM posts
+WHERE client_id = 'hr-pro-001';
+
+-- Then join with clients and plans:
+SELECT
+  p.plan_name,
+  COALESCE(c.limit_override_daily, p.daily_post_limit) as daily_post_limit,
+  p.monthly_post_limit,
+  p.can_schedule,
+  p.can_analytics,
+  p.can_generate_now,
+  p.ai_model
+FROM clients c
+JOIN plans p ON c.plan_id = p.id
+WHERE c.id = 'hr-pro-001';
+```
+
+**Benefits:**
+- Centralized plan management in database
+- Easy to add new plans or modify existing ones
+- Per-client customization without code changes
+- Dashboard automatically adapts to plan permissions
+- No hardcoded limits anywhere in frontend code
+
+## Post Scheduling System
+
+The dashboard includes an intelligent post scheduling system with timezone-aware date/time handling.
+
+**Key Features:**
+- **Local timezone support** - Works with any timezone globally, no hardcoded offsets
+- **Smart date selection** - Automatically prevents past times, suggests next available slot
+- **Auto-adjusting dates** - Custom time input automatically switches between today/tomorrow based on validity
+- **Real-time countdowns** - Live countdown timers showing time until publication
+- **Schedule management** - View, reschedule, or publish scheduled posts immediately
+
+**Implementation Details:**
+
+1. **Date Construction** - Uses local Date objects instead of string parsing:
+   ```javascript
+   // Correct: local date construction
+   const localDate = new Date(year, month - 1, day, hour, minute, 0, 0)
+   const isoStr = localDate.toISOString() // Converts to UTC automatically
+
+   // Wrong: hardcoded timezone offsets
+   const isoStr = new Date(`${dateStr}T${timeStr}:00+05:00`).toISOString()
+   ```
+
+2. **Smart Slot Selection** - `getDefaultSlot()` function:
+   - Checks slots: 9am, 12pm, 3pm, 6pm, 9pm
+   - Returns first slot more than 2 minutes in future
+   - Falls back to tomorrow 9am if all slots passed
+   - Automatically called when schedule picker opens
+
+3. **Past Time Prevention** - `isSlotPast()` function:
+   - Disables time slots that have already passed today
+   - Grays out past slots with reduced opacity
+   - Only applies to "today" date selection
+
+4. **Custom Time Auto-Adjustment**:
+   - When user types custom time (e.g., "22:30" at 22:19)
+   - System checks if time is still valid for today
+   - Automatically selects "today" if valid, "tomorrow" if passed
+   - Provides intelligent UX without manual date switching
+
+5. **Timezone Display** - `formatScheduledTime()` function:
+   - Receives UTC ISO string from database
+   - Converts to browser's local timezone automatically
+   - Uses `Intl.DateTimeFormat().resolvedOptions().timeZone`
+   - Displays relative time (Today/Tomorrow) with local time
+
+**Database Storage:**
+- `scheduled_for` column stores UTC ISO strings (e.g., "2026-03-04T13:00:00.000Z")
+- n8n workflow must include `scheduled_for` in SELECT queries
+- Posts with `approval_status='approved'` and `post_status='draft'` and `scheduled_for IS NOT NULL` are considered scheduled
+
+**API Endpoints:**
+- `GET /webhook/get-posts?status=scheduled` - Fetch scheduled posts
+- `POST /webhook/post-approval` with `scheduled_for` field - Schedule on approval
+- `POST /webhook/schedule-post` - Update scheduled time
+- `POST /webhook/publish-now` - Publish scheduled post immediately (updates `scheduled_for` to NOW())
 
 ## Playwright Script
 
@@ -334,21 +502,25 @@ python linkedin_actions.py '{
 
 The script:
 - Uses persistent browser contexts (saves login state)
-- Uses Playwright codegen role-based selectors (`get_by_role`) for reliability
-- Implements character-by-character typing with human-like delays (40-180ms per keystroke)
+- **Updated selectors for LinkedIn's current UI (2026-03)**:
+  - "Start a post" is now a `link` element (not button), with fallbacks to button and CSS selector
+  - Text editor uses shadow DOM selector (`get_by_test_id("interop-shadowdom").get_by_role("paragraph")`), with fallbacks
+- **Comprehensive logging** - Every step logs `[STEP X DONE]` to stderr for debugging
+- Implements stealth clipboard paste (Ctrl+V) for natural content insertion
 - Handles multi-paragraph content with `Shift+Enter` for line breaks
-- Takes debug screenshots on timeout (`/tmp/debug_*.png`)
+- **Screenshot safety** - All debug screenshots have 5-second timeout and error handling
 - Returns JSON status on stdout
 - Stores browser profiles in `playwright/profiles/`
 - **Timeout Configuration:** 60-second default timeouts for all page operations (navigation, element waits)
 
 **Post Action Implementation:**
 1. Navigate to feed with human-like scrolling and mouse movement (60s timeout)
-2. Click "Start a post" button (15s timeout)
-3. Click text editor (10s timeout)
-4. Type content character-by-character with realistic delays
-5. Click "Post" button (10s timeout)
-6. Verify submission by checking URL contains "feed"
+2. Find "Start a post" element (tries link → button → CSS selector with logging)
+3. Find text editor (tries shadow DOM → label → contenteditable with logging)
+4. Paste content using stealth clipboard method (Ctrl+V), fallback to typing
+5. Find Post button (tries exact match → partial match → CSS selector)
+6. Click Post button and verify submission (15-second loop checking URL and dialog state)
+7. Log `[STEP X DONE]` after each successful step for debugging
 
 **Timeout Behavior:**
 - Page-level operations: 60 seconds (navigation, default element waits)
@@ -387,12 +559,21 @@ All settings are in `config.json`:
 - **Virtual environment** - Must be `playwright/venv/` (not `.venv`) for consistency
 - **Flask Action Server** - Runs on port 5050, no timeout limits for long-running browser operations
 - **Timeout Configuration** - 60-second defaults for page operations, no subprocess timeout in Flask server
-- **Dashboard Settings** - n8n URL and posts per page stored in localStorage; daily post limit stored in both localStorage and database
+- **Dashboard Settings** - n8n URL and posts per page stored in localStorage; daily post limit from database via plans system
 - **Dashboard API** - Uses dynamic URL resolution (localStorage → env variable → default)
 - **Safe JSON Parsing** - All API responses use text parsing first, never direct res.json()
-- **Daily Limit Counter** - Filters posts by `created_at` date to count only today's posts (not all-time total)
-- **Manual Reset** - Testing feature allows resetting daily limit via localStorage (`limit_reset_date`)
-- **Settings Persistence** - Daily post limit syncs to database via `/webhook/update-settings` when saved in Settings panel
+- **Daily Limit Counter** - Uses `generated_today` from stats API (SQL: `COUNT(CASE WHEN created_at >= CURRENT_DATE THEN 1 END)`)
+- **Stats Auto-Refresh** - Content page refreshes stats every 30 seconds and on visibility change
+- **Publish Now Workflow** - Updates `scheduled_for` to NOW() instead of re-approving (avoids n8n rejection)
+- **Plans System** - All limits and permissions come from plans table; clients can override via `limit_override_daily`
+- **Settings Persistence** - Daily post limit from database is source of truth, localStorage is cache only
+- **No Hardcoded Limits** - All default values removed; dashboard reads from API, falls back to API defaults only
+- **Timezone Handling** - All scheduling uses local date construction, no hardcoded offsets, works globally
+- **Smart Schedule Picker** - Automatically prevents past times, suggests next available slot, auto-adjusts dates
+- **Schedule Storage** - Times stored as UTC ISO strings in database, displayed in user's local timezone
+- **Playwright Logging** - Every step logs `[STEP X DONE]` to stderr for debugging
+- **Playwright Selectors** - Updated for LinkedIn's 2026-03 UI (link-based "Start a post", shadow DOM editor)
+- **Screenshot Safety** - All debug screenshots have 5-second timeout to prevent hanging
 
 ## Dashboard API Integration
 
@@ -400,9 +581,19 @@ The dashboard connects to n8n via webhook endpoints:
 
 **GET Endpoints:**
 - `/webhook/get-posts?status=pending&limit=20` - Get pending posts
+- `/webhook/get-posts?status=scheduled&limit=20` - Get scheduled posts (approved, not yet published)
 - `/webhook/get-posts?status=approved&limit=20` - Get approved posts
 - `/webhook/get-posts?status=history&limit=50` - Get post history
-- `/webhook/get-posts?status=stats` - Get stats (pending, approved, published, rejected counts)
+- `/webhook/get-posts?status=stats` - Get stats with plan information
+  - `pending`, `approved`, `published`, `rejected`, `total` - Post counts
+  - `generated_today` - Count of posts created today only (uses `created_at >= CURRENT_DATE`)
+  - `daily_post_limit` - Daily post limit from plans table (or client override)
+  - `plan_name` - Current plan name (e.g., "Starter", "Pro", "Enterprise")
+  - `can_schedule` - Boolean, whether scheduling is allowed in plan
+  - `can_analytics` - Boolean, whether analytics access is allowed
+  - `can_generate_now` - Boolean, whether manual generation is allowed
+  - `ai_model` - AI model name for this plan
+  - `monthly_post_limit` - Monthly post limit for this plan
 - `/webhook/get-posts?status=pillar_stats` - Get content pillar performance
 - `/webhook/get-posts?status=daily_activity&days=7` - Get daily activity data
 
@@ -428,6 +619,13 @@ The dashboard connects to n8n via webhook endpoints:
     "scheduled_for": "ISO 8601 timestamp"
   }
   ```
+- `/webhook/publish-now` - Publish scheduled post immediately
+  ```json
+  {
+    "post_id": "uuid"
+  }
+  ```
+  Note: Updates `scheduled_for` to NOW() so queue worker picks it up within 60 seconds
 - `/webhook/reset-daily-limit` - Reset daily post generation limit (deletes today's posts from DB)
   ```json
   {
@@ -465,12 +663,28 @@ The dashboard connects to n8n via webhook endpoints:
 - Ensure PostgreSQL database has data: `docker exec la_postgres psql -U hragent -d linkedin_agent -c "SELECT COUNT(*) FROM posts;"`
 
 **"Generated today" counter not updating:**
-- Counter filters posts by `created_at` date (only counts today's posts)
-- Counter updates on page visibility change (switching tabs) or manual refresh
-- Check if posts have valid `created_at` timestamps in database
-- Verify daily limit setting in Settings (default: 3)
-- "Reset daily limit" button calls `/webhook/reset-daily-limit` to delete today's posts from DB
-- After reset, counter refetches from database to show accurate count
+- Counter uses `generated_today` field from stats API (counts only today's posts via SQL `created_at >= CURRENT_DATE`)
+- Counter auto-refreshes every 30 seconds
+- Counter refreshes on page visibility change (switching tabs)
+- Counter refreshes after "Generate Now" button click
+- Daily limit comes from plans system (database is source of truth, localStorage is cache only)
+- **Required n8n SQL query** for `/webhook/get-posts?status=stats`:
+  ```sql
+  SELECT
+    COUNT(CASE WHEN approval_status = 'pending' THEN 1 END)::int as pending,
+    COUNT(CASE WHEN approval_status = 'approved'
+      AND post_status NOT IN ('published','skipped') THEN 1 END)::int as approved,
+    COUNT(CASE WHEN post_status = 'published' THEN 1 END)::int as published,
+    COUNT(CASE WHEN approval_status = 'rejected' THEN 1 END)::int as rejected,
+    COUNT(*)::int as total,
+    COUNT(CASE WHEN created_at >= CURRENT_DATE THEN 1 END)::int as generated_today
+  FROM posts;
+
+  -- Then join with clients and plans tables to get:
+  -- daily_post_limit (from client override or plan default)
+  -- plan_name, can_schedule, can_analytics, can_generate_now
+  -- ai_model, monthly_post_limit
+  ```
 
 **Mobile access not working:**
 - Ensure mobile device is on same network as development machine
@@ -480,11 +694,36 @@ The dashboard connects to n8n via webhook endpoints:
 
 **Settings not persisting:**
 - n8n URL and posts per page are stored in browser localStorage only
-- Daily post limit is stored in both localStorage and database (synced via n8n webhook)
-- Clear browser cache may reset localStorage settings
+- Daily post limit is stored in database via plans system (localStorage is cache only)
+- Settings panel loads daily limit from API on open (calls `api.getStats()`)
+- After saving, settings panel re-fetches stats to confirm changes
+- Clear browser cache may reset localStorage settings (but not database values)
 - Each browser/device has separate localStorage settings
 - Check browser console for localStorage errors
 - If daily limit not persisting, verify n8n `/webhook/update-settings` endpoint is working
+- Verify plans table exists in database with proper structure
+
+**Scheduled posts not showing or "Time not set" error:**
+- Verify n8n `/webhook/get-posts?status=scheduled` endpoint returns posts with `scheduled_for` field
+- Check n8n workflow SQL query includes `scheduled_for` in SELECT statement
+- Ensure `scheduled_for` column exists in database: `docker exec la_postgres psql -U hragent -d linkedin_agent -c "\d posts;"`
+- Test endpoint directly: `curl http://192.168.100.48:5678/webhook/get-posts?status=scheduled`
+- Check browser console for API errors or missing field warnings
+
+**Schedule picker showing wrong dates or times:**
+- Schedule picker uses browser's local timezone automatically
+- Times are stored as UTC in database, displayed in local timezone
+- Check browser console for "buildScheduledISO" debug logs showing date construction
+- Verify system clock is correct on both client and server
+- Past time slots are automatically disabled (grayed out)
+- Custom time input auto-adjusts date based on whether time is still valid today
+
+**Timezone issues:**
+- All scheduling uses local date construction (no hardcoded timezone offsets)
+- Browser timezone is detected automatically via `Intl.DateTimeFormat().resolvedOptions().timeZone`
+- Times stored as UTC ISO strings in database (e.g., "2026-03-04T13:00:00.000Z")
+- Times displayed in user's local timezone when viewing scheduled posts
+- Works correctly for users in any timezone globally
 
 **n8n can't connect to Ollama:**
 - Use `http://host.docker.internal:11434` (not `localhost`)
@@ -498,10 +737,21 @@ The dashboard connects to n8n via webhook endpoints:
 **Playwright timeout issues:**
 - Default timeouts increased to 60 seconds for page operations
 - Flask action server has no subprocess timeout (handles long operations)
-- Check debug screenshots in `/tmp/debug_*.png` for timeout issues:
-  - `debug_start_post.png` - "Start a post" button not found
+- **Comprehensive step logging** - Check stderr for `[STEP X DONE]` messages to see exactly where it stops:
+  - `[STEP 1 DONE]` - Page loaded successfully
+  - `[STEP 2]` - Finding "Start a post" (logs which selector worked: link/button/CSS)
+  - `[STEP 2 DONE]` - Clicked "Start a post"
+  - `[STEP 3]` - Finding text editor (logs which selector worked: shadow DOM/label/contenteditable)
+  - `[STEP 3 DONE]` - Editor clicked
+  - `[STEP 4 DONE]` - Content pasted/typed
+  - `[STEP 5 DONE]` - Post button clicked
+  - `[STEP 6 WAIT]` - Checking success (1-15 iterations with URL)
+  - `[STEP 6 DONE]` - Verification complete with success status
+- Check debug screenshots in `/tmp/debug_*.png` (5-second timeout, won't hang):
+  - `debug_start_post.png` - "Start a post" element not found
   - `debug_editor.png` - Text editor not found
   - `debug_post_btn.png` - "Post" button not found
+- **LinkedIn UI changes (2026-03)**: Script now handles current selectors with fallbacks
 - If using direct script execution (not Flask server), increase n8n Execute Command timeout
 
 **Playwright fails:**

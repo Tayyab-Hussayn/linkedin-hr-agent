@@ -1,0 +1,214 @@
+{
+  "name": "06 - Manual Trigger API",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-now",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [64, 160],
+      "id": "7e94c510-ffce-40b9-9921-f5aa35c8b8c4",
+      "name": "Generate Now Webhook",
+      "webhookId": "eba2ad83-59cc-48c5-9ebf-b5c58b95617f"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json || {};\nconst client_id = body.client_id || 'hr-pro-001';\nconsole.log('Manual generation triggered for client:', client_id);\nreturn [{ json: { client_id, triggered_at: new Date().toISOString() } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [304, 160],
+      "id": "5cf75b28-eba8-4681-9219-6d9f0bcf1921",
+      "name": "Parse Request"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "OpbfcVAqKhOSapqy",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [544, 160],
+      "id": "377f4b6d-bc92-4840-9b1c-8de0ecfd6871",
+      "name": "Trigger Content Generation"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "{\"status\":\"ok\",\"message\":\"Content generation triggered successfully\"}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {"name": "Content-Type", "value": "application/json"},
+              {"name": "Access-Control-Allow-Origin", "value": "*"},
+              {"name": "Access-Control-Allow-Methods", "value": "POST, OPTIONS"},
+              {"name": "Access-Control-Allow-Headers", "value": "Content-Type"}
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [784, 160],
+      "id": "0df1d718-d673-4be2-b1f4-29babd1b6997",
+      "name": "Respond Success"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "update-settings",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [64, 400],
+      "id": "7615dbef-1f0e-42ab-9813-9d5775786855",
+      "name": "Update Settings Webhook",
+      "webhookId": "update-settings-webhook-unique-id-001"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE clients SET daily_post_limit = {{ $json.body.daily_post_limit }} WHERE id = '{{ $json.body.client_id }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [304, 400],
+      "id": "6104133e-cfee-4360-853a-3df195ac5719",
+      "name": "Update Client Settings",
+      "credentials": {
+        "postgres": {
+          "id": "JsQ6LXHQkw3ru7C2",
+          "name": "LinkedIn Agent DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "{\"status\":\"ok\",\"message\":\"Settings updated successfully\"}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {"name": "Content-Type", "value": "application/json"},
+              {"name": "Access-Control-Allow-Origin", "value": "*"},
+              {"name": "Access-Control-Allow-Methods", "value": "POST, OPTIONS"},
+              {"name": "Access-Control-Allow-Headers", "value": "Content-Type"}
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [544, 400],
+      "id": "44b33c99-be3a-4eb5-8257-de1960430f23",
+      "name": "Respond Settings Success"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "publish-now",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [64, 640],
+      "id": "publish-now-webhook-0001",
+      "name": "Publish Now Webhook",
+      "webhookId": "publish-now-webhook-unique-id-001"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE posts\nSET scheduled_for = NOW()\nWHERE id = '{{ $json.body.post_id }}'\n  AND approval_status = 'approved'\n  AND post_status = 'draft'\nRETURNING id, scheduled_for, post_status;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [304, 640],
+      "id": "publish-now-postgres-0002",
+      "name": "Set Scheduled For Now",
+      "credentials": {
+        "postgres": {
+          "id": "JsQ6LXHQkw3ru7C2",
+          "name": "LinkedIn Agent DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "{\"status\":\"ok\",\"message\":\"Post scheduled for immediate publishing. Queue worker will publish within 60 seconds.\"}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {"name": "Content-Type", "value": "application/json"},
+              {"name": "Access-Control-Allow-Origin", "value": "*"},
+              {"name": "Access-Control-Allow-Methods", "value": "POST, OPTIONS"},
+              {"name": "Access-Control-Allow-Headers", "value": "Content-Type"}
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [544, 640],
+      "id": "publish-now-respond-0003",
+      "name": "Respond Publish Now"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Generate Now Webhook": {
+      "main": [[{"node": "Parse Request", "type": "main", "index": 0}]]
+    },
+    "Parse Request": {
+      "main": [[{"node": "Trigger Content Generation", "type": "main", "index": 0}]]
+    },
+    "Trigger Content Generation": {
+      "main": [[{"node": "Respond Success", "type": "main", "index": 0}]]
+    },
+    "Update Settings Webhook": {
+      "main": [[{"node": "Update Client Settings", "type": "main", "index": 0}]]
+    },
+    "Update Client Settings": {
+      "main": [[{"node": "Respond Settings Success", "type": "main", "index": 0}]]
+    },
+    "Publish Now Webhook": {
+      "main": [[{"node": "Set Scheduled For Now", "type": "main", "index": 0}]]
+    },
+    "Set Scheduled For Now": {
+      "main": [[{"node": "Respond Publish Now", "type": "main", "index": 0}]]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "77d4d1a8-5acf-4eae-b8a1-d3abe16aaf3e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "497400c4566cd6214d30d36fa048e8a348f529be3d0ded3902cce04e13760ef2"
+  },
+  "id": "lPXTnJ2GOohpucJI",
+  "tags": []
+}

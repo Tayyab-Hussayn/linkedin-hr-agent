@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/useToast'
 import { useAppContext } from '@/context/AppContext'
 import { api } from '@/lib/api'
 import { config } from '@/lib/config'
+import { Stats } from '@/lib/types'
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const [pendingCount, setPendingCount] = useState(0)
@@ -17,9 +18,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [n8nUrl, setN8nUrl] = useState('')
   const [postsPerPage, setPostsPerPage] = useState(20)
-  const [dailyPostLimit, setDailyPostLimit] = useState(3)
+  const [dailyPostLimit, setDailyPostLimit] = useState<number | null>(null)
   const [publishingSlots, setPublishingSlots] = useState<string[]>(['18:00'])
   const [isSaving, setIsSaving] = useState(false)
+  const [stats, setStats] = useState<Stats | null>(null)
   const { toasts, showToast, dismissToast } = useToast()
   const { setScheduledCount } = useAppContext()
 
@@ -28,11 +30,9 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') {
       const storedUrl = localStorage.getItem('n8n_url') || config.n8nUrl
       const storedLimit = localStorage.getItem('posts_per_page') || '20'
-      const storedDailyLimit = localStorage.getItem('daily_post_limit') || '3'
       const storedSlots = localStorage.getItem('publishing_slots')
       setN8nUrl(storedUrl)
       setPostsPerPage(parseInt(storedLimit))
-      setDailyPostLimit(parseInt(storedDailyLimit))
       if (storedSlots) {
         try {
           setPublishingSlots(JSON.parse(storedSlots))
@@ -49,16 +49,19 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   // Load daily limit from DB when settings panel opens
   useEffect(() => {
     if (isSettingsOpen) {
-      api.getClientSettings().then(settings => {
-        setDailyPostLimit(settings.daily_post_limit || 3)
-      })
-      // Also read from localStorage as fallback
-      if (typeof window !== 'undefined') {
-        const stored = localStorage.getItem('daily_post_limit')
-        if (stored) setDailyPostLimit(parseInt(stored) || 3)
-      }
+      fetchStatsForSettings()
     }
   }, [isSettingsOpen])
+
+  const fetchStatsForSettings = async () => {
+    try {
+      const data = await api.getStats()
+      setStats(data)
+      setDailyPostLimit(data.daily_post_limit)
+    } catch(e) {
+      console.error('Failed to fetch stats for settings:', e)
+    }
+  }
 
   const fetchStats = async () => {
     try {
@@ -76,30 +79,40 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   }
 
   const handleSaveSettings = async () => {
+    if (dailyPostLimit === null) {
+      showToast('Please wait for settings to load', 'warning')
+      return
+    }
+
     setIsSaving(true)
     try {
-      // Save n8n URL, posts per page, and publishing slots to localStorage
+      // Save n8n URL, posts per page to localStorage
       if (typeof window !== 'undefined') {
         localStorage.setItem('n8n_url', n8nUrl)
         localStorage.setItem('posts_per_page', postsPerPage.toString())
-        localStorage.setItem('daily_post_limit', dailyPostLimit.toString())
         localStorage.setItem('publishing_slots', JSON.stringify(publishingSlots))
       }
 
       // Save daily limit and publishing slots to DB via n8n
-      const result = await api.updateClientSettings('hr-pro-001', {
+      await api.updateClientSettings('hr-pro-001', {
         daily_post_limit: dailyPostLimit,
         publishing_slots: publishingSlots
       })
 
-      if (result.status === 'ok' || result.message) {
-        showToast('Settings saved successfully', 'success')
-      } else {
-        showToast('Settings saved locally — DB update may have failed', 'warning')
+      // Re-fetch stats to confirm new value from DB
+      const updatedStats = await api.getStats()
+      setStats(updatedStats)
+      setDailyPostLimit(updatedStats.daily_post_limit)
+
+      // Sync to localStorage as cache only
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('daily_post_limit', updatedStats.daily_post_limit.toString())
       }
 
+      showToast(`Daily limit updated to ${updatedStats.daily_post_limit} posts/day`, 'success')
       setIsSettingsOpen(false)
-      // Refresh stats with new URL
+
+      // Refresh stats in main layout
       setTimeout(() => fetchStats(), 500)
     } catch(e) {
       showToast('Failed to save settings', 'error')
@@ -189,16 +202,23 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Daily Post Limit
             </label>
+            {stats && (
+              <div className="mb-2 text-xs text-gray-600 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                Current plan: <span className="font-semibold text-blue-700">{stats.plan_name}</span> (max {stats.daily_post_limit}/day)
+              </div>
+            )}
             <input
               type="number"
-              value={dailyPostLimit}
-              onChange={(e) => setDailyPostLimit(parseInt(e.target.value) || 3)}
+              value={dailyPostLimit ?? ''}
+              onChange={(e) => setDailyPostLimit(parseInt(e.target.value) || 0)}
+              placeholder={dailyPostLimit !== null ? String(dailyPostLimit) : 'Loading...'}
               min="1"
               max="20"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={dailyPostLimit === null}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Maximum posts to generate per day (Current: {dailyPostLimit} posts/day)
+              Override your plan's default limit (1-20 posts per day)
             </p>
           </div>
 

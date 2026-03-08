@@ -51,7 +51,7 @@ export function Header({ onRefresh, onOpenSettings }: HeaderProps) {
           <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
-          <span className="font-semibold text-lg">PostFlow</span>
+          <span className="font-semibold text-lg">QALAM</span>
         </div>
 
         {/* Right: Status & Actions */}

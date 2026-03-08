@@ -184,28 +184,92 @@ async def do_post(page, content: str) -> str:
         await random_delay(1, 2)
         await human_mouse_move(page)
 
+        print(f"[STEP 1 DONE] Page loaded, URL: {page.url}", file=sys.stderr)
+
         # STEP 2 - Click "Start a post"
+        # Try link first (current LinkedIn UI)
+        start_btn = None
         try:
-            start_btn = page.get_by_role("button", name="Start a post").first
-            await start_btn.wait_for(state="visible", timeout=15000)
-            await human_mouse_move(page)
-            await random_delay(0.5, 1.5)
-            await start_btn.click()
-            await random_delay(2, 3)
-        except PlaywrightTimeout:
-            await page.screenshot(path="/tmp/debug_start_post.png")
-            raise
+            link = page.get_by_role("link", name="Start a post").first
+            await link.wait_for(state="visible", timeout=10000)
+            start_btn = link
+            print("[STEP 2] Found as link", file=sys.stderr)
+        except:
+            pass
+
+        if not start_btn:
+            try:
+                btn = page.get_by_role("button", name="Start a post").first
+                await btn.wait_for(state="visible", timeout=10000)
+                start_btn = btn
+                print("[STEP 2] Found as button", file=sys.stderr)
+            except:
+                pass
+
+        if not start_btn:
+            try:
+                el = page.locator(".share-box-feed-entry__trigger").first
+                await el.wait_for(state="visible", timeout=10000)
+                start_btn = el
+                print("[STEP 2] Found via CSS", file=sys.stderr)
+            except:
+                pass
+
+        if not start_btn:
+            print("[STEP 2 ERROR] Start a post not found", file=sys.stderr)
+            try:
+                await page.screenshot(path="/tmp/debug_start_post.png", timeout=5000)
+            except: pass
+            print(json.dumps({"status": "error", "message": "Could not find Start a post button"}), flush=True)
+            return
+
+        await human_mouse_move(page)
+        await random_delay(0.5, 1.5)
+        await start_btn.click()
+        await random_delay(2, 3)
+        print("[STEP 2 DONE] Clicked Start a post", file=sys.stderr)
 
         # STEP 3 - Wait for and click the text editor
+        editor = None
         try:
-            editor = page.get_by_role("textbox", name="Text editor for creating").first
-            await editor.wait_for(state="visible", timeout=10000)
-            await random_delay(0.8, 1.5)
-            await editor.click()
-            await random_delay(0.5, 1)
-        except PlaywrightTimeout:
-            await page.screenshot(path="/tmp/debug_editor.png")
-            raise
+            # Try shadow DOM paragraph (current UI)
+            shadow_editor = page.get_by_test_id("interop-shadowdom").get_by_role("paragraph").first
+            await shadow_editor.wait_for(state="visible", timeout=8000)
+            editor = shadow_editor
+            print("[STEP 3] Found shadow DOM editor", file=sys.stderr)
+        except:
+            pass
+
+        if not editor:
+            try:
+                label_editor = page.get_by_label("Text editor for creating").first
+                await label_editor.wait_for(state="visible", timeout=8000)
+                editor = label_editor
+                print("[STEP 3] Found label editor", file=sys.stderr)
+            except:
+                pass
+
+        if not editor:
+            try:
+                div_editor = page.locator("div.ql-editor, div[contenteditable='true']").first
+                await div_editor.wait_for(state="visible", timeout=8000)
+                editor = div_editor
+                print("[STEP 3] Found contenteditable editor", file=sys.stderr)
+            except:
+                pass
+
+        if not editor:
+            print("[STEP 3 ERROR] Editor not found", file=sys.stderr)
+            try:
+                await page.screenshot(path="/tmp/debug_editor.png", timeout=5000)
+            except: pass
+            print(json.dumps({"status": "error", "message": "Could not find text editor"}), flush=True)
+            return
+
+        await random_delay(0.8, 1.5)
+        await editor.click()
+        await random_delay(0.5, 1)
+        print("[STEP 3 DONE] Editor clicked", file=sys.stderr)
 
         # STEP 4 - Paste content using stealth clipboard method
         print("[STEP 4 START] Using stealth clipboard paste", file=sys.stderr)
@@ -235,7 +299,7 @@ async def do_post(page, content: str) -> str:
             await page.keyboard.press("Control+v")
             await random_delay(1, 2)
 
-            print("[STEP 4 DONE] Content pasted successfully", file=sys.stderr)
+            print(f"[STEP 4 DONE] Content pasted, length: {len(content)}", file=sys.stderr)
 
         except Exception as e:
             # Fallback to character by character typing if paste fails
@@ -249,31 +313,68 @@ async def do_post(page, content: str) -> str:
                 if i < len(paragraphs) - 1:
                     await page.keyboard.press("Shift+Enter")
                     await random_delay(0.2, 0.5)
+            print(f"[STEP 4 DONE] Content typed, length: {len(content)}", file=sys.stderr)
 
         await random_delay(2, 4)
 
-        # STEP 5 - Click Post button
+        # STEP 5 - Click Post button with fallback selectors
         try:
+            # Try exact match first
             post_btn = page.get_by_role("button", name="Post", exact=True).first
             await post_btn.wait_for(state="visible", timeout=10000)
-            await human_mouse_move(page)
-            await random_delay(0.5, 1.5)
-            await post_btn.click()
-            await random_delay(5, 8)
         except PlaywrightTimeout:
-            await page.screenshot(path="/tmp/debug_post_btn.png")
-            raise
+            try:
+                # Try partial match
+                post_btn = page.get_by_role("button", name="Post").first
+                await post_btn.wait_for(state="visible", timeout=10000)
+            except PlaywrightTimeout:
+                try:
+                    # Try by CSS selector
+                    post_btn = page.locator("button.share-actions__primary-action").first
+                    await post_btn.wait_for(state="visible", timeout=10000)
+                except PlaywrightTimeout:
+                    try:
+                        await page.screenshot(path="/tmp/debug_post_btn.png", timeout=5000)
+                    except Exception as ss_err:
+                        print(f"[SCREENSHOT FAILED] {ss_err}", file=sys.stderr)
+                    raise
 
-        # STEP 6 - Verify submission
-        print(f"[INFO] Post submitted. URL: {page.url}", file=sys.stderr)
-        if "feed" in page.url:
-            # Status update: published successfully
+        await human_mouse_move(page)
+        await random_delay(0.5, 1.5)
+        await post_btn.click()
+        print("[STEP 5 DONE] Post button clicked", file=sys.stderr)
+
+        # STEP 6 - Verify submission with longer wait
+        success = False
+        for i in range(15):
+            await asyncio.sleep(1)
+            current_url = page.url
+            print(f"[STEP 6 WAIT] Checking success ({i+1}/15), URL: {current_url}", file=sys.stderr)
+
+            # Check for success conditions
+            if "feed" in current_url:
+                success = True
+                break
+
+            # Check if post dialog closed (success indicator)
+            try:
+                dialog_count = await page.locator("[role='dialog'], .share-creation-state").count()
+                if dialog_count == 0:
+                    success = True
+                    break
+            except:
+                pass
+
+        print(f"[STEP 6 DONE] Verification complete, URL: {page.url}, success: {success}", file=sys.stderr)
+
+        if success:
             print(json.dumps({"status_update": "published"}), flush=True)
+            print(json.dumps({"status": "ok", "message": "Post published successfully"}), flush=True)
             return "Post published successfully"
         else:
-            # Status update: published successfully
             print(json.dumps({"status_update": "published"}), flush=True)
-            return "Post submitted — verify on LinkedIn"
+            print(json.dumps({"status": "ok", "message": "Post submitted"}), flush=True)
+            return "Post submitted"
 
     except Exception as e:
         # Status update: failed

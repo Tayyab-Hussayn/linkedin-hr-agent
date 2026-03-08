@@ -6,30 +6,33 @@ import { Post, Stats } from '@/lib/types'
 import { useToast } from '@/hooks/useToast'
 import { getNextGenerationTime, formatRelativeTime, getPillarColor, cn } from '@/lib/utils'
 import { Sparkles, Clock, Loader2, TrendingUp } from 'lucide-react'
-import { getDailyPostLimit } from '@/lib/config'
 
 export default function ContentPage() {
   const [approvedPosts, setApprovedPosts] = useState<Post[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [generatedToday, setGeneratedToday] = useState(0)
-  const [dailyLimit, setDailyLimit] = useState(3)
   const [mounted, setMounted] = useState(false)
   const { showToast } = useToast()
 
   useEffect(() => {
     setMounted(true)
-    setDailyLimit(getDailyPostLimit())
   }, [])
 
   useEffect(() => {
     fetchData()
+    fetchStats()
 
-    // Re-read limit when component mounts or becomes visible
+    // Auto-refresh stats every 30 seconds
+    const interval = setInterval(fetchStats, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    // Refresh when page becomes visible
     const handleVisibility = () => {
       if (!document.hidden) {
-        setDailyLimit(getDailyPostLimit())
+        fetchStats()
         fetchData()
       }
     }
@@ -38,38 +41,27 @@ export default function ContentPage() {
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [])
 
+  const fetchStats = async () => {
+    try {
+      const data = await api.getStats()
+      setStats(data)
+      // Sync to localStorage as cache only
+      localStorage.setItem('daily_post_limit', String(data.daily_post_limit))
+      localStorage.setItem('plan_name', data.plan_name)
+    } catch(e) {
+      console.error('fetchStats failed:', e)
+    }
+  }
+
   const fetchData = async () => {
     setIsLoading(true)
     try {
-      const [approved, statsData, allPosts, pendingPosts] = await Promise.all([
+      const [approved, statsData] = await Promise.all([
         api.getPosts('approved', 20),
         api.getStats(),
-        api.getPosts('history', 50),
-        api.getPosts('pending', 50),
       ])
       setApprovedPosts(approved)
       setStats(statsData)
-
-      // Calculate posts generated TODAY only
-      const allTodayPosts = [...allPosts, ...pendingPosts]
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-
-      let todayCount = allTodayPosts.filter(post => {
-        const postDate = new Date(post.created_at)
-        postDate.setHours(0, 0, 0, 0)
-        return postDate.getTime() === today.getTime()
-      }).length
-
-      // Check for manual reset (testing only)
-      const resetDate = localStorage.getItem('limit_reset_date')
-      const todayString = new Date().toDateString()
-      if (resetDate === todayString) {
-        // User reset today — use 0 as effective count
-        todayCount = 0
-      }
-
-      setGeneratedToday(todayCount)
     } catch (error) {
       showToast('Failed to load content data', 'error')
     } finally {
@@ -78,9 +70,15 @@ export default function ContentPage() {
   }
 
   const handleGenerateNow = async () => {
+    // Check if generation is allowed by plan
+    if (!stats?.can_generate_now) {
+      showToast('Manual generation not available in your plan', 'warning')
+      return
+    }
+
     // Check daily limit
-    if (generatedToday >= dailyLimit) {
-      showToast(`Daily limit reached (${dailyLimit} posts per day)`, 'warning')
+    if (stats && stats.generated_today >= stats.daily_post_limit) {
+      showToast(`Daily limit reached (${stats.daily_post_limit} posts per day)`, 'warning')
       return
     }
 
@@ -88,7 +86,9 @@ export default function ContentPage() {
     try {
       await api.generateNow()
       showToast('Content generation started! Check queue in a moment.', 'success')
-      setGeneratedToday(prev => prev + 1)
+
+      // Refresh stats immediately
+      await fetchStats()
 
       // Refresh queue after 3 seconds
       setTimeout(() => {
@@ -103,14 +103,20 @@ export default function ContentPage() {
 
   const handlePublishNow = async (postId: string) => {
     try {
-      // Schedule for next 6PM PKT slot
-      const nowUTC = new Date()
-      const nowPKT = new Date(nowUTC.getTime() + 5 * 60 * 60 * 1000)
-      const todayPKT = nowPKT.toISOString().split('T')[0]
-      const sixPMPKT = new Date(`${todayPKT}T18:00:00+05:00`)
-      const scheduledTime = sixPMPKT.getTime() > nowUTC.getTime() + 2 * 60 * 1000
-        ? sixPMPKT.toISOString()
-        : new Date(`${new Date(nowPKT.getTime() + 86400000).toISOString().split('T')[0]}T18:00:00+05:00`).toISOString()
+      // Schedule for next 6PM local time slot
+      const now = new Date()
+      const today6PM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 18, 0, 0, 0)
+
+      let scheduledTime: string
+      if (today6PM.getTime() > now.getTime() + 2 * 60 * 1000) {
+        // Today at 6PM is still in the future
+        scheduledTime = today6PM.toISOString()
+      } else {
+        // Schedule for tomorrow at 6PM
+        const tomorrow6PM = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 18, 0, 0, 0)
+        scheduledTime = tomorrow6PM.toISOString()
+      }
+
       await api.schedulePost(postId, scheduledTime)
       showToast('Post scheduled for immediate publishing', 'success')
       setApprovedPosts(prev => prev.filter(p => p.id !== postId))
@@ -140,7 +146,8 @@ export default function ContentPage() {
   }
 
   const { hours, minutes } = getNextGenerationTime()
-  const isLimitReached = generatedToday >= dailyLimit
+  const isLimitReached = stats ? stats.generated_today >= stats.daily_post_limit : false
+  const progress = stats ? (stats.generated_today / stats.daily_post_limit) * 100 : 0
 
   return (
     <div className="space-y-6">
@@ -172,11 +179,16 @@ export default function ContentPage() {
 
         {/* Daily Limit Info */}
         <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-          <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center justify-between text-sm mb-1">
             <span className="text-gray-600">Generated today</span>
-            <span className="font-semibold text-gray-900">
-              {mounted ? `${Math.min(generatedToday, dailyLimit)} / ${dailyLimit}` : `0 / 3`}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-gray-900">
+                {mounted && stats ? `${stats.generated_today} / ${stats.daily_post_limit}` : '...'}
+              </span>
+              {mounted && stats && (
+                <span className="text-xs text-gray-400">{stats.plan_name} Plan</span>
+              )}
+            </div>
           </div>
           <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
             <div
@@ -185,8 +197,8 @@ export default function ContentPage() {
                 isLimitReached ? "bg-red-500" : "bg-blue-500"
               )}
               style={{
-                width: mounted
-                  ? `${Math.min((generatedToday / dailyLimit) * 100, 100)}%`
+                width: mounted && stats
+                  ? `${Math.min(progress, 100)}%`
                   : '0%'
               }}
             />
@@ -208,7 +220,7 @@ export default function ContentPage() {
         {/* Generate Now Button */}
         <button
           onClick={handleGenerateNow}
-          disabled={isGenerating || (mounted && generatedToday >= dailyLimit)}
+          disabled={isGenerating || !stats?.can_generate_now || (mounted && isLimitReached)}
           className="w-full px-4 py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {isGenerating ? (
@@ -216,6 +228,8 @@ export default function ContentPage() {
               <Loader2 className="w-5 h-5 animate-spin" />
               Generating...
             </>
+          ) : !stats?.can_generate_now ? (
+            'Manual generation not available'
           ) : isLimitReached ? (
             'Daily limit reached'
           ) : (

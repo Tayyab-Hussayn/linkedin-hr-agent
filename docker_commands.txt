@@ -30,3 +30,24 @@ WHERE id IN (
 
 	cloudefleare tunnel:
 cloudflared tunnel --url http://localhost:5678
+
+
+	claude console commands:
+
+const style = document.createElement('style');
+style.textContent = `* { animation: none !important; transition: none !important; }`;
+document.head.appendChild(style);
+console.log("All animations disabled");
+
+// Remove all but the last 10 messages from DOM
+const messages = document.querySelectorAll('[data-testid="conversation-turn"]');
+const toRemove = Array.from(messages).slice(0, -10);
+toRemove.forEach(el => el.remove());
+console.log(`Removed ${toRemove.length} old messages from DOM`);
+
+document.querySelectorAll('pre code span').forEach(span => {
+  span.outerHTML = span.textContent;
+});
+console.log("Syntax highlighting stripped");
+
+console.log("Total DOM nodes:", document.querySelectorAll('*').length);
