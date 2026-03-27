@@ -28,7 +28,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Load settings from localStorage
     if (typeof window !== 'undefined') {
-      const storedUrl = localStorage.getItem('n8n_url') || config.n8nUrl
+      const storedUrl = localStorage.getItem('api_url') || config.n8nUrl
       const storedLimit = localStorage.getItem('posts_per_page') || '20'
       const storedSlots = localStorage.getItem('publishing_slots')
       setN8nUrl(storedUrl)
@@ -86,14 +86,14 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
     setIsSaving(true)
     try {
-      // Save n8n URL, posts per page to localStorage
+      // Save API URL, posts per page to localStorage
       if (typeof window !== 'undefined') {
-        localStorage.setItem('n8n_url', n8nUrl)
+        localStorage.setItem('api_url', n8nUrl)
         localStorage.setItem('posts_per_page', postsPerPage.toString())
         localStorage.setItem('publishing_slots', JSON.stringify(publishingSlots))
       }
 
-      // Save daily limit and publishing slots to DB via n8n
+      // Save daily limit and publishing slots to DB via API
       await api.updateClientSettings('hr-pro-001', {
         daily_post_limit: dailyPostLimit,
         publishing_slots: publishingSlots
@@ -127,10 +127,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       if (isConnected) {
         showToast('Connection successful!', 'success')
       } else {
-        showToast('Connection failed. Check your n8n URL.', 'error')
+        showToast('Connection failed. Check your API server URL.', 'error')
       }
     } catch (error) {
-      showToast('Connection failed. Check your n8n URL.', 'error')
+      showToast('Connection failed. Check your API server URL.', 'error')
     }
   }
 
@@ -165,20 +165,20 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       {/* Settings Sheet */}
       <Sheet isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} title="Settings">
         <div className="space-y-6">
-          {/* n8n URL */}
+          {/* API URL */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              n8n Server URL
+              API Server URL
             </label>
             <input
               type="text"
               value={n8nUrl}
               onChange={(e) => setN8nUrl(e.target.value)}
-              placeholder="http://localhost:5678"
+              placeholder="http://localhost:5050"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <p className="text-xs text-gray-500 mt-1">
-              The URL where your n8n instance is running
+              The URL where your PostFlow API server is running
             </p>
           </div>
 
