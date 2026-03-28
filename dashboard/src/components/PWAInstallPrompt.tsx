@@ -6,8 +6,14 @@ export default function PWAInstallPrompt() {
   const [showBanner, setShowBanner] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
   const [isStandalone, setIsStandalone] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
+    // Check if mobile device
+    const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+      || window.innerWidth < 768
+    setIsMobile(mobile)
+
     const ios = /iPad|iPhone|iPod/.test(navigator.userAgent)
     const standalone = window.matchMedia('(display-mode: standalone)').matches
     setIsIOS(ios)
@@ -27,7 +33,7 @@ export default function PWAInstallPrompt() {
     }
   }, [])
 
-  if (isStandalone || !showBanner) return null
+  if (isStandalone || !showBanner || !isMobile) return null
 
   const handleInstall = async () => {
     if (deferredPrompt) {

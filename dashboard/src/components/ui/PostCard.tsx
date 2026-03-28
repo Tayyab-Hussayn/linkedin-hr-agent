@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ThumbsUp, Edit3, ThumbsDown, Loader2, Clock } from 'lucide-react'
+import { ThumbsUp, Edit3, ThumbsDown, Loader2, Clock, Copy, Check } from 'lucide-react'
 import { Post } from '@/lib/types'
 import { formatRelativeTime, getStatusColor, getPillarColor, cn } from '@/lib/utils'
 import { Sheet } from './Sheet'
@@ -30,6 +30,8 @@ export function PostCard({
   const [selectedDate, setSelectedDate] = useState<'today' | 'tomorrow' | 'day2'>('today')
   const [selectedTime, setSelectedTime] = useState('21:00')
   const [customTime, setCustomTime] = useState('')
+  const [copied, setCopied] = useState(false)
+  const [showFullPost, setShowFullPost] = useState(false)
 
   function getDefaultSlotDisplay(): string {
     const now = new Date()
@@ -139,6 +141,12 @@ export function PostCard({
     }
   }
 
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(post.content)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   // Extract hook (first line or first sentence)
   const getHook = (content: string) => {
     const lines = content.split('\n').filter(l => l.trim())
@@ -155,6 +163,9 @@ export function PostCard({
   const hook = getHook(post.content)
   const bodyPreview = getBodyPreview(post.content)
 
+  // Calculate actual word count
+  const wordCount = post.content?.trim().split(/\s+/).length || 0
+
   // Get pillar color based on pillar name hash
   const pillarIndex = post.topic_pillar.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
   const pillarColor = getPillarColor(pillarIndex)
@@ -164,12 +175,28 @@ export function PostCard({
   return (
     <div
       className={cn(
-        'bg-white rounded-2xl border border-gray-200 shadow-sm p-5 transition-all duration-300',
+        'relative bg-white rounded-2xl border border-gray-200 shadow-sm p-5 transition-all duration-300',
         isRemoving && 'opacity-0 scale-95 h-0 overflow-hidden'
       )}
     >
+      {/* Copy Button - Top Right */}
+      <button
+        onClick={handleCopy}
+        className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+        title="Copy content"
+      >
+        {copied ? (
+          <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+            <Check className="w-3 h-3" />
+            Copied!
+          </span>
+        ) : (
+          <Copy className="w-4 h-4" />
+        )}
+      </button>
+
       {/* Header: Pillar & Status */}
-      <div className="flex items-start justify-between mb-3">
+      <div className="flex items-start justify-between mb-3 pr-20">
         <span className={cn('px-3 py-1 text-xs font-semibold rounded-full border', pillarColor)}>
           {post.topic_pillar}
         </span>
@@ -185,15 +212,23 @@ export function PostCard({
 
       {/* Body Preview */}
       {bodyPreview && (
-        <p className="text-sm text-gray-600 line-clamp-3 mb-4">
-          {bodyPreview}
-        </p>
+        <div className="mb-4">
+          <p className="text-sm text-gray-600 line-clamp-3">
+            {bodyPreview}
+          </p>
+          <button
+            onClick={() => setShowFullPost(true)}
+            className="text-sm text-blue-600 hover:text-blue-800 mt-1 font-medium"
+          >
+            View full post
+          </button>
+        </div>
       )}
 
       {/* Meta */}
       <div className="flex items-center justify-between text-xs text-gray-400 mb-4">
         <span>{formatRelativeTime(post.created_at)}</span>
-        <span>{post.estimated_words} words</span>
+        <span>{wordCount} words</span>
       </div>
 
       {/* Actions */}
@@ -424,6 +459,89 @@ export function PostCard({
           </div>
         </div>
       </Sheet>
+
+      {/* Full Post Modal */}
+      {showFullPost && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowFullPost(false)}>
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b">
+              <span className="font-semibold text-gray-900">Full Post</span>
+              <button
+                onClick={() => setShowFullPost(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Topic badge and word count */}
+            <div className="px-4 pt-3 flex items-center justify-between">
+              <span className={cn('text-xs px-2 py-1 rounded-full font-semibold border', pillarColor)}>
+                {post.topic_pillar}
+              </span>
+              <span className="text-xs text-gray-500">{wordCount} words</span>
+            </div>
+
+            {/* Content - scrollable */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <p className="text-gray-800 whitespace-pre-wrap leading-relaxed text-sm">
+                {post.content}
+              </p>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t flex gap-2">
+              <button
+                onClick={handleCopy}
+                className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors flex items-center gap-2"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    Copy
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  setShowFullPost(false)
+                  handleApproveClick()
+                }}
+                disabled={isApproving || isRejecting}
+                className="flex-1 bg-green-500 text-white px-4 py-2.5 rounded-xl font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isApproving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <ThumbsUp className="w-4 h-4" />
+                )}
+                Approve
+              </button>
+              <button
+                onClick={() => {
+                  setShowFullPost(false)
+                  handleReject()
+                }}
+                disabled={isApproving || isRejecting}
+                className="flex-1 border border-red-300 text-red-600 px-4 py-2.5 rounded-xl font-medium hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isRejecting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <ThumbsDown className="w-4 h-4" />
+                )}
+                Reject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

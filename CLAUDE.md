@@ -132,6 +132,7 @@ linkedin-hr-agent/
 ├── playwright/
 │   ├── action_server.py      # Flask HTTP server wrapping linkedin_actions.py
 │   ├── linkedin_actions.py   # Single entry point for LinkedIn actions
+│   ├── prompt_builder.py     # AI prompt templates and builder for content generation
 │   ├── humanizer.py          # Delay/behavior utilities
 │   └── requirements.txt      # playwright + flask
 │
@@ -527,6 +528,142 @@ The script:
 - Specific element waits: 10-15 seconds (buttons, editors)
 - No subprocess timeout when called via Flask action server
 - Handles slow network conditions and LinkedIn's dynamic loading
+
+## Prompt Builder (AI Content Generation)
+
+The `prompt_builder.py` module provides niche-specific templates and dynamic prompt generation for AI content creation.
+
+**Purpose:**
+- Build personalized system prompts from client profiles
+- Provide proven content templates for different professional niches
+- Generate format-specific user prompts for post creation
+- Maintain consistent voice and style across generated content
+
+**Available Niches (8 templates):**
+1. **hr_professional** - HR managers, talent acquisition, people ops
+2. **digital_marketer** - Growth hackers, performance marketers, CMOs
+3. **web_developer** - Software engineers, tech career content
+4. **ceo_founder** - Entrepreneurs, startup leaders, executives
+5. **consultant** - Business consultants, strategy advisors
+6. **sales_professional** - B2B sales, SDRs, account executives
+7. **finance_professional** - Financial advisors, investment strategists
+8. **product_manager** - Product strategy, UX, roadmap planning
+
+**Post Formats (6 types):**
+- `story` - Personal narrative with lesson (150-250 words)
+- `insight` - Industry observation with fresh perspective (100-200 words)
+- `tips` - Actionable advice list (150-250 words)
+- `controversial` - Contrarian take with reasoning (150-250 words)
+- `lessons` - Mistakes and learnings (150-250 words)
+- `list` - Value-packed numbered list (150-250 words)
+
+**Main Functions:**
+
+```python
+from prompt_builder import (
+    build_system_prompt,
+    build_user_prompt,
+    get_client_profile_summary,
+    get_available_niches
+)
+
+# Build system prompt from client profile
+system_prompt = build_system_prompt(client_dict)
+
+# Build user prompt for specific post
+user_prompt = build_user_prompt(
+    topic_pillar="Talent Acquisition",
+    post_format="story",
+    additional_context="Focus on remote hiring challenges"
+)
+
+# Get client profile summary for API responses
+profile = get_client_profile_summary(client_dict)
+
+# Get all available niches with defaults
+niches = get_available_niches()
+```
+
+**Client Profile Structure:**
+
+```python
+client = {
+    "name": "John Doe",
+    "niche": "hr_professional",  # Required
+    "job_title": "HR Director",
+    "company_name": "Acme Corp",
+    "years_experience": 10,
+    "tone": "Empathetic, data-informed, people-first",
+    "target_audience": "HR managers, CHROs, business owners",
+    "writing_style": "Story-driven with actionable insights",
+    "unique_angle": "Bridges people strategy with business results",
+    "topic_pillars": ["Talent Acquisition", "Culture", "HR Tech"],
+    "avoid_topics": ["politics", "religion"],
+    "content_language": "en"  # ISO language code
+}
+```
+
+**Integration with n8n:**
+
+In n8n workflows, use Execute Command or Code nodes to call prompt_builder:
+
+```bash
+# Option 1: Direct Python execution
+cd /home/krawin/exp.code/linkedin-hr-agent/playwright && \
+source venv/bin/activate && \
+python -c "
+import json
+from prompt_builder import build_system_prompt, build_user_prompt
+
+client = json.loads('{{ $json.client_profile }}')
+system_prompt = build_system_prompt(client)
+user_prompt = build_user_prompt('{{ $json.topic }}', '{{ $json.format }}')
+
+print(json.dumps({
+    'system_prompt': system_prompt,
+    'user_prompt': user_prompt
+}))
+"
+```
+
+Then use the generated prompts in HTTP Request node to call Ollama:
+
+```json
+{
+  "model": "deepseek-v3.2:cloud",
+  "messages": [
+    {"role": "system", "content": "{{ $json.system_prompt }}"},
+    {"role": "user", "content": "{{ $json.user_prompt }}"}
+  ],
+  "stream": false
+}
+```
+
+**Template Defaults:**
+
+Each niche template includes sensible defaults:
+- Default topic pillars (5 per niche)
+- Default tone and writing style
+- Default target audience
+- Base prompt structure
+
+If client profile fields are empty, the builder falls back to template defaults automatically.
+
+**Testing:**
+
+```bash
+cd playwright
+source venv/bin/activate
+python prompt_builder.py
+# Outputs test prompts and profile summary
+```
+
+**Important Notes:**
+- All prompts enforce LinkedIn best practices (no hashtags by default, short paragraphs, strong hooks)
+- Language support via `content_language` field (generates content in specified language)
+- Topic pillars should be rotated to maintain content variety
+- Avoid topics list prevents sensitive content generation
+- System prompts are personalized with client's name, role, and experience
 
 ## Configuration
 

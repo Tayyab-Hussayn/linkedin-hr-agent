@@ -6,9 +6,11 @@ import signal
 import psycopg2
 import psycopg2.extras
 import urllib.request
+import random
 from datetime import datetime, timezone, timedelta
 from flask import Flask, request, jsonify
 from config import DB_CONFIG, CLIENT_ID, N8N_GENERATE_NOW_WEBHOOK
+from prompt_builder import build_system_prompt, build_user_prompt, get_client_profile_summary, get_available_niches
 
 signal.signal(signal.SIGCHLD, signal.SIG_DFL)
 
@@ -463,6 +465,116 @@ def generate_now():
             return cors_response({"status": "ok", "message": "Content generation triggered"})
     except Exception as e:
         return cors_response({"status": "error", "message": str(e)}, 500)
+
+# ═══════════════════════════════════════════
+# NEW ENDPOINT 7 — GET /api/client-profile/<client_id>
+# Returns full client profile with dynamic prompts
+# ═══════════════════════════════════════════
+
+@app.route('/api/client-profile/<client_id>', methods=['GET', 'OPTIONS'])
+def get_client_profile(client_id):
+    rows = db_query("""
+        SELECT
+            c.*,
+            cel.daily_post_limit,
+            cel.plan_name,
+            cel.can_generate_now,
+            cel.monthly_post_limit
+        FROM clients c
+        JOIN client_effective_limits cel ON cel.client_id = c.id
+        WHERE c.id = %s
+    """, [client_id])
+
+    if not rows:
+        return cors_response({"status": "error", "message": "Client not found"}, 404)
+
+    client = rows[0]
+
+    # Parse JSONB fields
+    import json as json_module
+    for field in ['topic_pillars', 'post_formats', 'sample_posts', 'avoid_topics', 'publishing_slots']:
+        val = client.get(field)
+        if isinstance(val, str):
+            try:
+                client[field] = json_module.loads(val)
+            except:
+                client[field] = []
+
+    # Build dynamic prompts
+    system_prompt = build_system_prompt(client)
+    profile_summary = get_client_profile_summary(client)
+
+    # Get topic pillars and post formats
+    from prompt_builder import NICHE_TEMPLATES, FORMAT_INSTRUCTIONS
+    niche = client.get('niche', 'hr_professional')
+    template = NICHE_TEMPLATES.get(niche, NICHE_TEMPLATES['hr_professional'])
+    pillars = client.get('topic_pillars') or template['default_pillars']
+    formats = client.get('post_formats') or ['story', 'insight', 'tips']
+
+    return cors_response({
+        "status": "ok",
+        "client_id": client_id,
+        "name": client.get('name'),
+        "system_prompt": system_prompt,
+        "topic_pillars": pillars,
+        "post_formats": formats,
+        "profile_summary": profile_summary,
+        "daily_post_limit": client.get('daily_post_limit', 3),
+        "plan_name": client.get('plan_name', 'starter')
+    })
+
+# ═══════════════════════════════════════════
+# NEW ENDPOINT 8 — GET /api/niches
+# Returns all available niches
+# ═══════════════════════════════════════════
+
+@app.route('/api/niches', methods=['GET', 'OPTIONS'])
+def get_niches():
+    return cors_response({
+        "status": "ok",
+        "niches": get_available_niches()
+    })
+
+# ═══════════════════════════════════════════
+# NEW ENDPOINT 9 — PUT /api/client-profile/<client_id>
+# Update client profile
+# ═══════════════════════════════════════════
+
+@app.route('/api/client-profile/<client_id>', methods=['PUT', 'OPTIONS'])
+def update_client_profile(client_id):
+    import json as json_module
+    body = request.get_json() or {}
+
+    allowed_fields = [
+        'niche', 'job_title', 'tone', 'target_audience',
+        'writing_style', 'sample_posts', 'avoid_topics',
+        'content_language', 'years_experience', 'company_name',
+        'unique_angle', 'topic_pillars', 'post_formats'
+    ]
+
+    updates = []
+    params = []
+
+    for field in allowed_fields:
+        if field in body:
+            updates.append(f"{field} = %s")
+            val = body[field]
+            if isinstance(val, (list, dict)):
+                val = json_module.dumps(val)
+            params.append(val)
+
+    if not updates:
+        return cors_response({"status": "error", "message": "No valid fields to update"}, 400)
+
+    params.append(client_id)
+    db_query(
+        f"UPDATE clients SET {', '.join(updates)} WHERE id = %s",
+        params,
+        fetch=False
+    )
+
+    # Return updated profile
+    return get_client_profile(client_id)
 
 if __name__ == '__main__':
     app.config['TIMEOUT'] = None
