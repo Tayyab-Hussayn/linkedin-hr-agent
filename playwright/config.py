@@ -34,3 +34,7 @@ QUEUE_RETRY_DELAYS = [10, 30]  # minutes
 
 # Publishing
 DEFAULT_PUBLISHING_SLOTS = ["18:00"]
+
+# Auth
+JWT_SECRET = "postflow-super-secret-key-change-in-production"
+JWT_EXPIRY_DAYS = 30

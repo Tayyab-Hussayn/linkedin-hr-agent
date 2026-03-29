@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { Clock, CalendarClock, Sparkles, BarChart3, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppContext } from '@/context/AppContext'
+import { auth } from '@/lib/auth'
 
 interface SidebarProps {
   pendingCount?: number
@@ -14,6 +15,7 @@ interface SidebarProps {
 export function Sidebar({ pendingCount = 0, publishedCount = 0 }: SidebarProps) {
   const pathname = usePathname()
   const { scheduledPulse, scheduledCount } = useAppContext()
+  const user = auth.getUser()
 
   const navItems = [
     { href: '/queue', label: 'Queue', icon: Clock, badge: pendingCount },
@@ -90,11 +92,22 @@ export function Sidebar({ pendingCount = 0, publishedCount = 0 }: SidebarProps) 
         </div>
       </div>
 
-      {/* Settings */}
-      <div className="p-3 border-t border-gray-200">
-        <button className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors">
-          <Settings className="w-4 h-4" />
-          <span>Settings</span>
+      {/* User & Logout */}
+      <div className="mt-auto pt-4 border-t border-gray-200 p-3">
+        {user && (
+          <div className="px-3 mb-3">
+            <p className="text-xs font-medium text-gray-900 truncate">{user.name}</p>
+            <p className="text-xs text-gray-500">Signed in</p>
+          </div>
+        )}
+        <button
+          onClick={() => auth.logout()}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          Sign out
         </button>
       </div>
     </aside>

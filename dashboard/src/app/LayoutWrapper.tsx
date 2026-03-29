@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { Header } from '@/components/layout/Header'
 import { MobileNav } from '@/components/layout/MobileNav'
@@ -9,10 +10,13 @@ import { Sheet } from '@/components/ui/Sheet'
 import { useToast } from '@/hooks/useToast'
 import { useAppContext } from '@/context/AppContext'
 import { api } from '@/lib/api'
+import { auth } from '@/lib/auth'
 import { config } from '@/lib/config'
 import { Stats } from '@/lib/types'
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
+  const router = useRouter()
+  const pathname = usePathname()
   const [pendingCount, setPendingCount] = useState(0)
   const [publishedCount, setPublishedCount] = useState(0)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -24,6 +28,16 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const [stats, setStats] = useState<Stats | null>(null)
   const { toasts, showToast, dismissToast } = useToast()
   const { setScheduledCount } = useAppContext()
+
+  // Pages that don't need auth
+  const publicPages = ['/login', '/register', '/onboarding']
+  const isPublicPage = publicPages.some(p => pathname?.startsWith(p))
+
+  useEffect(() => {
+    if (!isPublicPage && !auth.isLoggedIn()) {
+      router.replace('/login')
+    }
+  }, [pathname, isPublicPage, router])
 
   useEffect(() => {
     // Load settings from localStorage
@@ -144,6 +158,16 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         return [...prev, slot].sort()
       }
     })
+  }
+
+  // Don't render sidebar/header on public pages
+  if (isPublicPage) {
+    return (
+      <>
+        {children}
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      </>
+    )
   }
 
   return (

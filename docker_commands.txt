@@ -34,24 +34,26 @@ cloudflared tunnel --url http://localhost:5678
 
 	claude console commands:
 
-// Find the top-level message wrappers (parent of user/claude message divs)
-const userMsgs = document.querySelectorAll('div[class*="font-user-message"]');
-const claudeMsgs = document.querySelectorAll('div[class*="font-claude-response"]');
+(function cleanClaude() {
+  // 1. Disable animations
+  const s = document.createElement('style');
+  s.textContent = `* { animation: none !important; transition: none !important; }`;
+  document.head.appendChild(s);
 
-console.log("User messages found:", userMsgs.length);
-console.log("Claude messages found:", claudeMsgs.length);
+  // 2. Strip syntax highlighting spans
+  document.querySelectorAll('pre code').forEach(pre => {
+    pre.textContent = pre.textContent;
+  });
 
-// Get parent containers (one level up = full turn block)
-const allTurns = new Set();
-userMsgs.forEach(el => { if (el.parentElement) allTurns.add(el.parentElement); });
-claudeMsgs.forEach(el => { if (el.parentElement) allTurns.add(el.parentElement); });
+  // 3. Kill hidden/aria elements & SVGs
+  document.querySelectorAll('[aria-hidden="true"], svg').forEach(el => el.remove());
 
-const turnsArray = Array.from(allTurns);
-console.log("Total turns detected:", turnsArray.length);
+  // 4. Nuke old messages from main container (keep last 20)
+  const conv = document.querySelector('div.flex-1.flex.flex-col.px-4.max-w-3xl.mx-auto.w-full.pt-1');
+  if (conv) {
+    const children = Array.from(conv.children);
+    children.slice(0, -20).forEach(el => el.remove());
+  }
 
-// Remove all but last 6
-const toRemove = turnsArray.slice(0, -6);
-toRemove.forEach(el => el.remove());
-
-console.log(`Removed ${toRemove.length} turns`);
-console.log("Remaining nodes:", document.querySelectorAll('*').length);
+  console.log("✅ Done. Remaining nodes:", document.querySelectorAll('*').length);
+})();

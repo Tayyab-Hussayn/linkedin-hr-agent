@@ -7,9 +7,11 @@ import psycopg2
 import psycopg2.extras
 import urllib.request
 import random
+import jwt
+import bcrypt
 from datetime import datetime, timezone, timedelta
 from flask import Flask, request, jsonify
-from config import DB_CONFIG, CLIENT_ID, N8N_GENERATE_NOW_WEBHOOK
+from config import DB_CONFIG, CLIENT_ID, N8N_GENERATE_NOW_WEBHOOK, JWT_SECRET, JWT_EXPIRY_DAYS
 from prompt_builder import build_system_prompt, build_user_prompt, get_client_profile_summary, get_available_niches
 
 signal.signal(signal.SIGCHLD, signal.SIG_DFL)
@@ -41,6 +43,61 @@ def cors_response(data, status=200):
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
     return response, status
 
+# ================================================================
+# AUTH HELPERS
+# ================================================================
+
+def generate_token(user_id, client_id, role):
+    payload = {
+        'user_id': str(user_id),
+        'client_id': client_id,
+        'role': role,
+        'exp': datetime.now(timezone.utc) + timedelta(days=JWT_EXPIRY_DAYS)
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm='HS256')
+
+def verify_token(token):
+    try:
+        return jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+def get_current_user():
+    """Extract and verify JWT from request headers.
+    Returns decoded token payload or None."""
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return None
+    token = auth_header.split(' ', 1)[1]
+    return verify_token(token)
+
+def get_client_id():
+    """
+    Get client_id from JWT token if present,
+    fall back to hardcoded CLIENT_ID for compatibility.
+    """
+    user = get_current_user()
+    if user and user.get('client_id'):
+        return user['client_id']
+    return CLIENT_ID
+
+def require_auth(f):
+    """Decorator to protect endpoints with JWT auth."""
+    from functools import wraps
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user = get_current_user()
+        if not user:
+            return cors_response({
+                "status": "error",
+                "message": "Unauthorized — valid token required"
+            }, 401)
+        request.current_user = user
+        return f(*args, **kwargs)
+    return decorated
+
 @app.before_request
 def handle_options():
     """Handle OPTIONS preflight requests"""
@@ -50,6 +107,203 @@ def handle_options():
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
         return response, 200
+
+# ================================================================
+# AUTH ENDPOINTS
+# ================================================================
+
+@app.route('/auth/register', methods=['POST', 'OPTIONS'])
+def register():
+    body = request.get_json() or {}
+    email = body.get('email', '').strip().lower()
+    password = body.get('password', '')
+    name = body.get('name', '').strip()
+    niche = body.get('niche', 'hr_professional')
+
+    if not email or not password or not name:
+        return cors_response({
+            "status": "error",
+            "message": "name, email and password are required"
+        }, 400)
+
+    if len(password) < 8:
+        return cors_response({
+            "status": "error",
+            "message": "Password must be at least 8 characters"
+        }, 400)
+
+    # Check if email already exists
+    existing = db_query(
+        "SELECT id FROM users WHERE email = %s",
+        [email]
+    )
+    if existing:
+        return cors_response({
+            "status": "error",
+            "message": "Email already registered"
+        }, 409)
+
+    # Hash password
+    password_hash = bcrypt.hashpw(
+        password.encode('utf-8'),
+        bcrypt.gensalt()
+    ).decode('utf-8')
+
+    # Create client record
+    client_id = f"client-{email.split('@')[0]}-{int(datetime.now().timestamp())}"
+    db_query("""
+        INSERT INTO clients (id, name, niche, plan_id, publishing_slots, is_active)
+        VALUES (%s, %s, %s, 'free', '["18:00"]', true)
+    """, [client_id, name, niche], fetch=False)
+
+    # Create user record
+    users = db_query("""
+        INSERT INTO users (email, password_hash, client_id, role)
+        VALUES (%s, %s, %s, 'client')
+        RETURNING id, client_id, role
+    """, [email, password_hash, client_id])
+
+    user = users[0]
+    token = generate_token(user['id'], user['client_id'], user['role'])
+
+    return cors_response({
+        "status": "ok",
+        "message": "Account created successfully",
+        "token": token,
+        "client_id": client_id,
+        "name": name
+    }, 201)
+
+@app.route('/auth/login', methods=['POST', 'OPTIONS'])
+def login():
+    body = request.get_json() or {}
+    email = body.get('email', '').strip().lower()
+    password = body.get('password', '')
+
+    if not email or not password:
+        return cors_response({
+            "status": "error",
+            "message": "email and password are required"
+        }, 400)
+
+    # Fetch user
+    users = db_query("""
+        SELECT u.id, u.email, u.password_hash, u.client_id,
+               u.role, u.is_active, c.name
+        FROM users u
+        JOIN clients c ON c.id = u.client_id
+        WHERE u.email = %s
+    """, [email])
+
+    if not users:
+        return cors_response({
+            "status": "error",
+            "message": "Invalid email or password"
+        }, 401)
+
+    user = users[0]
+
+    if not user['is_active']:
+        return cors_response({
+            "status": "error",
+            "message": "Account is deactivated"
+        }, 403)
+
+    # Verify password
+    if not bcrypt.checkpw(
+        password.encode('utf-8'),
+        user['password_hash'].encode('utf-8')
+    ):
+        return cors_response({
+            "status": "error",
+            "message": "Invalid email or password"
+        }, 401)
+
+    # Update last login
+    db_query(
+        "UPDATE users SET last_login = NOW() WHERE id = %s",
+        [user['id']], fetch=False
+    )
+
+    token = generate_token(user['id'], user['client_id'], user['role'])
+
+    return cors_response({
+        "status": "ok",
+        "token": token,
+        "client_id": user['client_id'],
+        "name": user['name'],
+        "role": user['role']
+    })
+
+@app.route('/auth/me', methods=['GET', 'OPTIONS'])
+@require_auth
+def get_me():
+    user = request.current_user
+    users = db_query("""
+        SELECT u.email, u.role, u.last_login,
+               c.name, c.niche, c.plan_id,
+               cel.plan_name, cel.daily_post_limit,
+               cel.can_analytics, cel.can_generate_now
+        FROM users u
+        JOIN clients c ON c.id = u.client_id
+        JOIN client_effective_limits cel ON cel.client_id = u.client_id
+        WHERE u.client_id = %s
+    """, [user['client_id']])
+
+    if not users:
+        return cors_response({"status": "error", "message": "User not found"}, 404)
+
+    data = users[0]
+    if data.get('last_login'):
+        data['last_login'] = data['last_login'].isoformat()
+
+    return cors_response({"status": "ok", "user": data})
+
+@app.route('/auth/change-password', methods=['POST', 'OPTIONS'])
+@require_auth
+def change_password():
+    user = request.current_user
+    body = request.get_json() or {}
+    current_password = body.get('current_password', '')
+    new_password = body.get('new_password', '')
+
+    if not current_password or not new_password:
+        return cors_response({
+            "status": "error",
+            "message": "current_password and new_password required"
+        }, 400)
+
+    if len(new_password) < 8:
+        return cors_response({
+            "status": "error",
+            "message": "New password must be at least 8 characters"
+        }, 400)
+
+    users = db_query(
+        "SELECT password_hash FROM users WHERE client_id = %s",
+        [user['client_id']]
+    )
+
+    if not users or not bcrypt.checkpw(
+        current_password.encode('utf-8'),
+        users[0]['password_hash'].encode('utf-8')
+    ):
+        return cors_response({
+            "status": "error",
+            "message": "Current password is incorrect"
+        }, 401)
+
+    new_hash = bcrypt.hashpw(
+        new_password.encode('utf-8'),
+        bcrypt.gensalt()
+    ).decode('utf-8')
+
+    db_query(
+        "UPDATE users SET password_hash = %s WHERE client_id = %s",
+        [new_hash, user['client_id']], fetch=False
+    )
+
+    return cors_response({"status": "ok", "message": "Password updated successfully"})
 
 def update_post_status(post_id, status):
     """Update post status in database"""
@@ -167,7 +421,7 @@ def health():
 @app.route('/api/posts', methods=['GET', 'OPTIONS'])
 def get_posts():
     status = request.args.get('status', 'queue')
-    client_id = request.args.get('client_id', CLIENT_ID)
+    client_id = request.args.get('client_id') or get_client_id()
     limit = int(request.args.get('limit', 20))
 
     if status == 'stats':
@@ -220,7 +474,7 @@ def get_posts():
 # ═══════════════════════════════════════════
 
 def get_stats_internal(client_id=None):
-    cid = client_id or CLIENT_ID
+    cid = client_id or get_client_id()
     rows = db_query("""
         SELECT
             COUNT(CASE WHEN p.approval_status = 'pending' THEN 1 END)::int as pending,
@@ -237,8 +491,8 @@ def get_stats_internal(client_id=None):
             cel.can_generate_now,
             cel.ai_model,
             cel.monthly_post_limit
-        FROM posts p
-        CROSS JOIN client_effective_limits cel
+        FROM client_effective_limits cel
+        LEFT JOIN posts p ON p.client_id = cel.client_id
         WHERE cel.client_id = %s
         GROUP BY cel.daily_post_limit, cel.plan_name, cel.can_schedule,
             cel.can_analytics, cel.can_generate_now, cel.ai_model, cel.monthly_post_limit
@@ -253,7 +507,7 @@ def get_stats_internal(client_id=None):
 
 @app.route('/api/stats', methods=['GET', 'OPTIONS'])
 def get_stats():
-    client_id = request.args.get('client_id', CLIENT_ID)
+    client_id = request.args.get('client_id') or get_client_id()
     return get_stats_internal(client_id)
 
 # ═══════════════════════════════════════════
@@ -327,7 +581,7 @@ def approve_post():
     if final_decision == 'approved':
         # Compute scheduled_for if not provided
         if not scheduled_for:
-            scheduled_for = compute_next_slot(post.get('client_id', CLIENT_ID))
+            scheduled_for = compute_next_slot(post.get('client_id') or get_client_id())
 
         db_query("""
             UPDATE posts SET
@@ -415,7 +669,7 @@ def publish_now():
 @app.route('/api/settings', methods=['POST', 'OPTIONS'])
 def update_settings():
     body = request.get_json() or {}
-    client_id = body.get('client_id', CLIENT_ID)
+    client_id = body.get('client_id') or get_client_id()
     daily_post_limit = body.get('daily_post_limit')
     publishing_slots = body.get('publishing_slots')
 
@@ -451,7 +705,7 @@ def update_settings():
 @app.route('/api/generate-now', methods=['POST', 'OPTIONS'])
 def generate_now():
     body = request.get_json() or {}
-    client_id = body.get('client_id', CLIENT_ID)
+    client_id = body.get('client_id') or get_client_id()
 
     payload = json.dumps({"client_id": client_id}).encode()
     req = urllib.request.Request(
