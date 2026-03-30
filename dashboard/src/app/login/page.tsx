@@ -30,7 +30,23 @@ export default function LoginPage() {
           client_id: res.client_id,
           role: res.role
         })
-        router.replace('/queue')
+        // Fetch full profile
+        try {
+          const me = await api.getMe()
+          if (me.status === 'ok') {
+            // Update stored user with full profile
+            auth.setToken(res.token, {
+              name: res.name,
+              client_id: res.client_id,
+              role: res.role,
+              job_title: me.user?.job_title || '',
+              niche: me.user?.niche || ''
+            })
+          }
+        } catch (e) {
+          console.error('Failed to fetch profile:', e)
+        }
+        window.location.href = '/queue'
       } else {
         setError(res.message || 'Login failed')
       }

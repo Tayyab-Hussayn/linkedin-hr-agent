@@ -9,6 +9,9 @@ import urllib.request
 import random
 import jwt
 import bcrypt
+import threading
+import queue as queue_module
+import time
 from datetime import datetime, timezone, timedelta
 from flask import Flask, request, jsonify
 from config import DB_CONFIG, CLIENT_ID, N8N_GENERATE_NOW_WEBHOOK, JWT_SECRET, JWT_EXPIRY_DAYS
@@ -17,6 +20,26 @@ from prompt_builder import build_system_prompt, build_user_prompt, get_client_pr
 signal.signal(signal.SIGCHLD, signal.SIG_DFL)
 
 app = Flask(__name__)
+
+# SSE event broadcaster
+_sse_clients: list = []
+_sse_lock = threading.Lock()
+
+def broadcast_event(event_type: str, data: dict):
+    """Send event to all connected SSE clients."""
+    with _sse_lock:
+        dead = []
+        for q in _sse_clients:
+            try:
+                q.put_nowait({
+                    'type': event_type,
+                    'data': data,
+                    'timestamp': datetime.now(timezone.utc).isoformat()
+                })
+            except Exception:
+                dead.append(q)
+        for q in dead:
+            _sse_clients.remove(q)
 
 def db_query(sql, params=None, fetch=True):
     """Execute a DB query and return results"""
@@ -39,8 +62,8 @@ def cors_response(data, status=200):
     """Return JSON response with CORS headers"""
     response = jsonify(data)
     response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
     return response, status
 
 # ================================================================
@@ -65,13 +88,20 @@ def verify_token(token):
         return None
 
 def get_current_user():
-    """Extract and verify JWT from request headers.
+    """Extract and verify JWT from request headers or query params.
     Returns decoded token payload or None."""
+    # Check Authorization header first
     auth_header = request.headers.get('Authorization', '')
-    if not auth_header.startswith('Bearer '):
-        return None
-    token = auth_header.split(' ', 1)[1]
-    return verify_token(token)
+    if auth_header.startswith('Bearer '):
+        token = auth_header.split(' ', 1)[1]
+        return verify_token(token)
+
+    # Fallback: check query param (for SSE connections)
+    token = request.args.get('token')
+    if token:
+        return verify_token(token)
+
+    return None
 
 def get_client_id():
     """
@@ -104,8 +134,8 @@ def handle_options():
     if request.method == 'OPTIONS':
         response = jsonify({})
         response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
         return response, 200
 
 # ================================================================
@@ -413,6 +443,52 @@ def execute():
 def health():
     return jsonify({"status": "f**king ok", "service": "playwright-action-server"})
 
+@app.route('/api/events', methods=['GET', 'OPTIONS'])
+def sse_stream():
+    """Server-Sent Events endpoint for real-time updates."""
+    if request.method == 'OPTIONS':
+        response = jsonify({})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response, 200
+
+    client_id = get_client_id()
+    client_queue = queue_module.Queue()
+
+    with _sse_lock:
+        _sse_clients.append(client_queue)
+
+    def generate():
+        # Send initial connection event
+        yield f"data: {json.dumps({'type': 'connected', 'client_id': client_id})}\n\n"
+
+        while True:
+            try:
+                # Wait for event with 25s timeout (keep-alive)
+                event = client_queue.get(timeout=25)
+                yield f"data: {json.dumps(event)}\n\n"
+            except queue_module.Empty:
+                # Send keep-alive ping
+                yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+            except GeneratorExit:
+                break
+
+        with _sse_lock:
+            try:
+                _sse_clients.remove(client_queue)
+            except ValueError:
+                pass
+
+    response = app.response_class(
+        generate(),
+        mimetype='text/event-stream'
+    )
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return response
+
 # ═══════════════════════════════════════════
 # NEW ENDPOINT 1 — GET /api/posts
 # Replaces n8n 04 get-posts webhook
@@ -593,6 +669,12 @@ def approve_post():
             WHERE id = %s
         """, [final_content, scheduled_for, post_id], fetch=False)
 
+        # Broadcast to all connected clients
+        broadcast_event('post_approved', {
+            'post_id': post_id,
+            'scheduled_for': scheduled_for
+        })
+
         # Build human readable display time
         scheduled_display = ''
         try:
@@ -620,6 +702,11 @@ def approve_post():
                 approval_note = %s
             WHERE id = %s
         """, [rejection_reason, post_id], fetch=False)
+
+        # Broadcast to all connected clients
+        broadcast_event('post_rejected', {
+            'post_id': post_id
+        })
 
         return cors_response({
             "status": "ok",
@@ -654,6 +741,12 @@ def publish_now():
         return cors_response({"status": "error", "message": "Post not found or not eligible"}, 404)
 
     row = updated[0]
+
+    # Broadcast to all connected clients
+    broadcast_event('publish_now', {
+        'post_id': post_id
+    })
+
     return cors_response({
         "status": "ok",
         "message": "Post queued for immediate publishing. Will publish within 60 seconds.",
@@ -803,7 +896,9 @@ def update_client_profile(client_id):
         'niche', 'job_title', 'tone', 'target_audience',
         'writing_style', 'sample_posts', 'avoid_topics',
         'content_language', 'years_experience', 'company_name',
-        'unique_angle', 'topic_pillars', 'post_formats'
+        'unique_angle', 'topic_pillars', 'post_formats',
+        'linkedin_email', 'linkedin_password',
+        'publishing_slots'
     ]
 
     updates = []
@@ -830,6 +925,26 @@ def update_client_profile(client_id):
     # Return updated profile
     return get_client_profile(client_id)
 
+# ═══════════════════════════════════════════
+# NEW ENDPOINT 10 — POST /api/notify
+# Called by n8n after content generation to notify clients
+# ═══════════════════════════════════════════
+
+@app.route('/api/notify', methods=['POST', 'OPTIONS'])
+def notify_clients():
+    """Called by n8n after content generation to notify clients."""
+    body = request.get_json() or {}
+    event_type = body.get('event', 'new_posts')
+    client_id = body.get('client_id', CLIENT_ID)
+    count = body.get('count', 1)
+
+    broadcast_event(event_type, {
+        'client_id': client_id,
+        'count': count,
+        'message': f'{count} new post(s) ready for review'
+    })
+    return cors_response({'status': 'ok'})
+
 if __name__ == '__main__':
     app.config['TIMEOUT'] = None
-    app.run(host='0.0.0.0', port=5050, debug=False)
+    app.run(host='0.0.0.0', port=5050, debug=False, threaded=True)

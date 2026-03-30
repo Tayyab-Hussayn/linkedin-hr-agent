@@ -1,15 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Sparkles, RefreshCw, Settings } from 'lucide-react'
+import { Sparkles, RefreshCw } from 'lucide-react'
 import { api } from '@/lib/api'
 
 interface HeaderProps {
   onRefresh?: () => void
-  onOpenSettings?: () => void
 }
 
-export function Header({ onRefresh, onOpenSettings }: HeaderProps) {
+export function Header({ onRefresh }: HeaderProps) {
   const [lastUpdated, setLastUpdated] = useState<string>('')
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isOnline, setIsOnline] = useState(true)
@@ -71,15 +70,6 @@ export function Header({ onRefresh, onOpenSettings }: HeaderProps) {
             title="Refresh"
           >
             <RefreshCw className={`w-5 h-5 text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </button>
-
-          {/* Settings Button */}
-          <button
-            onClick={onOpenSettings}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            title="Settings"
-          >
-            <Settings className="w-5 h-5 text-gray-600" />
           </button>
         </div>
       </div>

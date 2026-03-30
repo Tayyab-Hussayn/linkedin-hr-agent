@@ -5,6 +5,7 @@ import { api } from '@/lib/api'
 import { Post } from '@/lib/types'
 import { useToast } from '@/hooks/useToast'
 import { useAppContext } from '@/context/AppContext'
+import { useSSE } from '@/hooks/useSSE'
 import { CalendarCheck, Clock, Trash2, Calendar } from 'lucide-react'
 import { cn, getPillarColor, formatRelativeTime } from '@/lib/utils'
 import { Sheet } from '@/components/ui/Sheet'
@@ -57,6 +58,21 @@ export default function ScheduledPage() {
   const { showToast } = useToast()
   const { setScheduledCount } = useAppContext()
 
+  useSSE({
+    onPostApproved: () => {
+      // Post approved — refresh scheduled list
+      fetchScheduledPosts()
+    },
+    onPostRejected: () => {
+      // Post rejected — refresh scheduled list
+      fetchScheduledPosts()
+    },
+    onPublishNow: () => {
+      // Post published — refresh scheduled list
+      fetchScheduledPosts()
+    }
+  })
+
   function getDefaultSlotDisplay(): string {
     const now = new Date()
     const sixPM = new Date()
@@ -88,8 +104,6 @@ export default function ScheduledPage() {
 
   useEffect(() => {
     fetchScheduledPosts()
-    const interval = setInterval(fetchScheduledPosts, 30000)
-    return () => clearInterval(interval)
   }, [])
 
   useEffect(() => {

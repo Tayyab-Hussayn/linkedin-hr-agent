@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Clock, CalendarClock, Sparkles, BarChart3, Settings } from 'lucide-react'
@@ -15,13 +16,20 @@ interface SidebarProps {
 export function Sidebar({ pendingCount = 0, publishedCount = 0 }: SidebarProps) {
   const pathname = usePathname()
   const { scheduledPulse, scheduledCount } = useAppContext()
-  const user = auth.getUser()
+  const [mounted, setMounted] = useState(false)
+  const [user, setUser] = useState<{ name: string, client_id: string, role: string, job_title?: string, niche?: string } | null>(null)
+
+  useEffect(() => {
+    setMounted(true)
+    setUser(auth.getUser())
+  }, [])
 
   const navItems = [
     { href: '/queue', label: 'Queue', icon: Clock, badge: pendingCount },
     { href: '/scheduled', label: 'Scheduled', icon: CalendarClock, badge: scheduledCount, isPulsing: scheduledPulse },
     { href: '/content', label: 'Content', icon: Sparkles },
     { href: '/analytics', label: 'Analytics', icon: BarChart3 },
+    { href: '/settings', label: 'Settings', icon: Settings },
   ]
 
   return (
@@ -38,8 +46,12 @@ export function Sidebar({ pendingCount = 0, publishedCount = 0 }: SidebarProps) 
 
       {/* Client Info */}
       <div className="px-4 py-3 border-b border-gray-200">
-        <div className="text-sm font-medium text-gray-900">Moeez Ahmad</div>
-        <div className="text-xs text-gray-500">HR Director</div>
+        <div className="text-sm font-medium text-gray-900">
+          {mounted ? (user?.name || 'User') : 'User'}
+        </div>
+        <div className="text-xs text-gray-500">
+          {mounted ? (user?.role === 'client' ? 'Member' : user?.role || 'Member') : 'Member'}
+        </div>
       </div>
 
       {/* Navigation */}

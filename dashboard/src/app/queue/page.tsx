@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Sheet } from '@/components/ui/Sheet'
 import { useToast } from '@/hooks/useToast'
 import { useAppContext } from '@/context/AppContext'
+import { useSSE } from '@/hooks/useSSE'
 import Link from 'next/link'
 
 function getNextScheduleSlot(): Date {
@@ -42,6 +43,20 @@ export default function QueuePage() {
   const [isSaving, setIsSaving] = useState(false)
   const { showToast } = useToast()
   const { triggerScheduledPulse, setScheduledCount } = useAppContext()
+
+  useSSE({
+    onNewPosts: () => {
+      // New posts generated — refresh queue
+      fetchData()
+    },
+    onPostApproved: () => {
+      // Post approved — refresh to remove from queue
+      fetchData()
+    },
+    onPostRejected: () => {
+      fetchData()
+    }
+  })
 
   useEffect(() => {
     fetchData()

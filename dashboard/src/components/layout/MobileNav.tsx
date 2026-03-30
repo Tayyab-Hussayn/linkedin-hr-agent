@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Clock, CalendarClock, Sparkles, BarChart3 } from 'lucide-react'
+import { Clock, CalendarClock, Sparkles, BarChart3, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppContext } from '@/context/AppContext'
 
@@ -19,6 +19,7 @@ export function MobileNav({ pendingCount = 0 }: MobileNavProps) {
     { href: '/scheduled', label: 'Scheduled', icon: CalendarClock, badge: scheduledCount, isPulsing: scheduledPulse },
     { href: '/content', label: 'Content', icon: Sparkles },
     { href: '/analytics', label: 'Analytics', icon: BarChart3 },
+    { href: '/settings', label: 'Settings', icon: Settings },
   ]
 
   return (
