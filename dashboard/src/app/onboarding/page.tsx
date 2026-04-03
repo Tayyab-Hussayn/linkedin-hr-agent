@@ -79,17 +79,17 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-8">
+    <div className="min-h-screen bg-bg flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-lg">
         {/* Progress */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-700">Step {step} of 5</span>
-            <span className="text-sm text-gray-500">{Math.round((step/5)*100)}% complete</span>
+            <span className="text-sm font-medium text-text-primary">Step {step} of 5</span>
+            <span className="text-sm text-muted">{Math.round((step/5)*100)}% complete</span>
           </div>
-          <div className="h-1.5 bg-gray-200 rounded-full">
+          <div className="h-1.5 bg-surface-2 rounded-full">
             <div
-              className="h-1.5 bg-blue-600 rounded-full transition-all duration-300"
+              className="h-1.5 accent-gradient rounded-full transition-all duration-300"
               style={{ width: `${(step/5)*100}%` }}
             />
           </div>
@@ -98,8 +98,8 @@ export default function OnboardingPage() {
         {/* Step 1 — Pick niche */}
         {step === 1 && (
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">What do you do?</h2>
-            <p className="text-gray-500 text-sm mb-6">Pick the niche that best describes your work</p>
+            <h2 className="text-2xl font-bold text-text-primary mb-1">What do you do?</h2>
+            <p className="text-muted text-sm mb-6">Pick the niche that best describes your work</p>
             <div className="grid grid-cols-2 gap-3">
               {Object.entries(niches).map(([key, val]: [string, any]) => (
                 <button
@@ -107,19 +107,19 @@ export default function OnboardingPage() {
                   onClick={() => selectNiche(key)}
                   className={`p-4 rounded-2xl border-2 text-left transition-all ${
                     selectedNiche === key
-                      ? 'border-blue-600 bg-blue-50'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
+                      ? 'border-accent bg-accent/5'
+                      : 'border-stroke bg-surface hover:border-stroke/80'
                   }`}
                 >
                   <div className="text-2xl mb-2">{NICHE_ICONS[key] || '💡'}</div>
-                  <div className="text-sm font-medium text-gray-900">{val.label}</div>
+                  <div className="text-sm font-medium text-text-primary">{val.label}</div>
                 </button>
               ))}
             </div>
             <button
               onClick={() => selectedNiche && setStep(2)}
               disabled={!selectedNiche}
-              className="w-full mt-6 bg-blue-600 text-white py-3 rounded-xl font-medium disabled:opacity-40 hover:bg-blue-700 transition-colors"
+              className="w-full mt-6 accent-gradient text-bg py-3 rounded-xl font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
             >
               Continue
             </button>
@@ -129,13 +129,13 @@ export default function OnboardingPage() {
         {/* Step 2 — Topic pillars */}
         {step === 2 && (
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">Your content pillars</h2>
-            <p className="text-gray-500 text-sm mb-6">Topics you'll post about. Edit to match your focus.</p>
+            <h2 className="text-2xl font-bold text-text-primary mb-1">Your content pillars</h2>
+            <p className="text-muted text-sm mb-6">Topics you'll post about. Edit to match your focus.</p>
             <div className="flex flex-wrap gap-2 mb-4">
               {pillars.map(p => (
-                <span key={p} className="flex items-center gap-1 bg-blue-100 text-blue-800 text-sm px-3 py-1.5 rounded-full">
+                <span key={p} className="flex items-center gap-1 bg-surface-2 text-accent border border-accent/30 text-sm px-3 py-1.5 rounded-full">
                   {p}
-                  <button onClick={() => removePillar(p)} className="text-blue-500 hover:text-blue-800 ml-1">×</button>
+                  <button onClick={() => removePillar(p)} className="text-accent hover:text-accent-light ml-1">×</button>
                 </span>
               ))}
             </div>
@@ -146,21 +146,21 @@ export default function OnboardingPage() {
                 onChange={e => setNewPillar(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addPillar()}
                 placeholder="Add a topic..."
-                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 px-4 py-2.5 bg-surface-2 border border-stroke text-text-primary placeholder:text-muted rounded-lg text-sm focus:outline-none focus:border-accent"
               />
               <button
                 onClick={addPillar}
-                className="px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                className="px-4 py-2.5 accent-gradient text-bg rounded-lg text-sm font-medium hover:opacity-90"
               >
                 Add
               </button>
             </div>
             <div className="flex gap-3 mt-6">
-              <button onClick={() => setStep(1)} className="flex-1 py-3 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50">Back</button>
+              <button onClick={() => setStep(1)} className="flex-1 py-3 border border-stroke rounded-xl font-medium text-muted hover:bg-surface-2">Back</button>
               <button
                 onClick={() => pillars.length > 0 && setStep(3)}
                 disabled={pillars.length === 0}
-                className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-medium disabled:opacity-40 hover:bg-blue-700"
+                className="flex-1 py-3 accent-gradient text-bg rounded-xl font-medium disabled:opacity-40 hover:opacity-90"
               >Continue</button>
             </div>
           </div>
@@ -169,35 +169,35 @@ export default function OnboardingPage() {
         {/* Step 3 — Tone */}
         {step === 3 && (
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">Your voice & audience</h2>
-            <p className="text-gray-500 text-sm mb-6">Helps the AI write in your style</p>
+            <h2 className="text-2xl font-bold text-text-primary mb-1">Your voice & audience</h2>
+            <p className="text-muted text-sm mb-6">Helps the AI write in your style</p>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Your tone</label>
+                <label className="block text-sm font-medium text-text-primary mb-1">Your tone</label>
                 <input
                   type="text"
                   value={tone}
                   onChange={e => setTone(e.target.value)}
                   placeholder="e.g. Empathetic, data-driven, direct"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2.5 bg-surface-2 border border-stroke text-text-primary placeholder:text-muted rounded-lg text-sm focus:outline-none focus:border-accent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Target audience</label>
+                <label className="block text-sm font-medium text-text-primary mb-1">Target audience</label>
                 <input
                   type="text"
                   value={targetAudience}
                   onChange={e => setTargetAudience(e.target.value)}
                   placeholder="e.g. HR managers, startup founders, developers"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2.5 bg-surface-2 border border-stroke text-text-primary placeholder:text-muted rounded-lg text-sm focus:outline-none focus:border-accent"
                 />
               </div>
             </div>
             <div className="flex gap-3 mt-6">
-              <button onClick={() => setStep(2)} className="flex-1 py-3 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50">Back</button>
+              <button onClick={() => setStep(2)} className="flex-1 py-3 border border-stroke rounded-xl font-medium text-muted hover:bg-surface-2">Back</button>
               <button
                 onClick={() => setStep(4)}
-                className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700"
+                className="flex-1 py-3 accent-gradient text-bg rounded-xl font-medium hover:opacity-90"
               >Continue</button>
             </div>
           </div>
@@ -206,8 +206,8 @@ export default function OnboardingPage() {
         {/* Step 4 — Publishing time */}
         {step === 4 && (
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">When to publish?</h2>
-            <p className="text-gray-500 text-sm mb-6">Posts will be scheduled at this time by default</p>
+            <h2 className="text-2xl font-bold text-text-primary mb-1">When to publish?</h2>
+            <p className="text-muted text-sm mb-6">Posts will be scheduled at this time by default</p>
             <div className="grid grid-cols-2 gap-3">
               {[
                 { time: '09:00', label: '9:00 AM', desc: 'Morning commute' },
@@ -220,20 +220,20 @@ export default function OnboardingPage() {
                   onClick={() => setPublishingSlot(time)}
                   className={`p-4 rounded-2xl border-2 text-left transition-all ${
                     publishingSlot === time
-                      ? 'border-blue-600 bg-blue-50'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
+                      ? 'border-accent bg-accent/5'
+                      : 'border-stroke bg-surface hover:border-stroke/80'
                   }`}
                 >
-                  <div className="font-semibold text-gray-900 text-sm">{label}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{desc}</div>
+                  <div className="font-semibold text-text-primary text-sm">{label}</div>
+                  <div className="text-xs text-muted mt-0.5">{desc}</div>
                 </button>
               ))}
             </div>
             <div className="flex gap-3 mt-6">
-              <button onClick={() => setStep(3)} className="flex-1 py-3 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50">Back</button>
+              <button onClick={() => setStep(3)} className="flex-1 py-3 border border-stroke rounded-xl font-medium text-muted hover:bg-surface-2">Back</button>
               <button
                 onClick={() => setStep(5)}
-                className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700"
+                className="flex-1 py-3 accent-gradient text-bg rounded-xl font-medium hover:opacity-90"
               >
                 Continue
               </button>
@@ -244,21 +244,21 @@ export default function OnboardingPage() {
         {/* Step 5 — LinkedIn credentials */}
         {step === 5 && (
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">
+            <h2 className="text-2xl font-bold text-text-primary mb-1">
               Connect LinkedIn
             </h2>
-            <p className="text-gray-500 text-sm mb-2">
+            <p className="text-muted text-sm mb-2">
               Your credentials are encrypted and only used to publish posts on your behalf.
             </p>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-6">
-              <p className="text-amber-800 text-xs">
+            <div className="bg-accent/5 border border-accent/30 rounded-xl px-4 py-3 mb-6">
+              <p className="text-accent text-xs">
                 🔒 Credentials are stored securely and never shared.
                 We recommend using a strong password.
               </p>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   LinkedIn Email
                 </label>
                 <input
@@ -266,11 +266,11 @@ export default function OnboardingPage() {
                   value={linkedinEmail}
                   onChange={e => setLinkedinEmail(e.target.value)}
                   placeholder="your@email.com"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2.5 bg-surface-2 border border-stroke text-text-primary placeholder:text-muted rounded-lg text-sm focus:outline-none focus:border-accent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   LinkedIn Password
                 </label>
                 <input
@@ -278,21 +278,21 @@ export default function OnboardingPage() {
                   value={linkedinPassword}
                   onChange={e => setLinkedinPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2.5 bg-surface-2 border border-stroke text-text-primary placeholder:text-muted rounded-lg text-sm focus:outline-none focus:border-accent"
                 />
               </div>
             </div>
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => setStep(4)}
-                className="flex-1 py-3 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50"
+                className="flex-1 py-3 border border-stroke rounded-xl font-medium text-muted hover:bg-surface-2"
               >
                 Back
               </button>
               <button
                 onClick={handleFinish}
                 disabled={saving || !linkedinEmail || !linkedinPassword}
-                className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-medium disabled:opacity-40 hover:bg-blue-700"
+                className="flex-1 py-3 accent-gradient text-bg rounded-xl font-medium disabled:opacity-40 hover:opacity-90"
               >
                 {saving ? 'Setting up...' : 'Start posting'}
               </button>

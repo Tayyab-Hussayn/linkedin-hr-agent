@@ -1,0 +1,20 @@
+'use client'
+import { useEffect } from 'react'
+
+export default function ServiceWorkerRegistration() {
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      // Unregister old service workers to clear cache
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        registrations.forEach(reg => reg.unregister())
+      }).then(() => {
+        // Register the new service worker
+        navigator.serviceWorker
+          .register('/sw.js')
+          .then((reg) => console.log('SW registered:', reg.scope))
+          .catch((err) => console.log('SW registration failed:', err))
+      })
+    }
+  }, [])
+  return null
+}

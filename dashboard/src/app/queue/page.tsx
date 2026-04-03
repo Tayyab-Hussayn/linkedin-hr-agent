@@ -259,7 +259,7 @@ export default function QueuePage() {
           action={
             <Link
               href="/content"
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+              className="text-sm text-accent hover:text-blue-700 font-medium"
             >
               Go to Content tab to generate now
             </Link>
@@ -292,21 +292,21 @@ export default function QueuePage() {
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-text-primary mb-2">
               Content
             </label>
             <textarea
               value={editedContent}
               onChange={(e) => setEditedContent(e.target.value)}
               rows={12}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-sans text-sm"
+              className="w-full px-4 py-3 border border-stroke rounded-lg focus:outline-none focus:border-accent font-sans text-sm"
               placeholder="Edit your post content..."
             />
             <div className="flex items-center justify-between mt-2">
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-muted">
                 {editedContent.length} characters
               </span>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-muted">
                 ~{Math.ceil(editedContent.split(/\s+/).length)} words
               </span>
             </div>
@@ -315,7 +315,7 @@ export default function QueuePage() {
           <button
             onClick={handleSaveEdit}
             disabled={isSaving || !editedContent.trim()}
-            className="w-full px-4 py-3 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full px-4 py-3 accent-gradient text-white rounded-lg font-medium hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSaving ? 'Saving...' : 'Save & Approve'}
           </button>

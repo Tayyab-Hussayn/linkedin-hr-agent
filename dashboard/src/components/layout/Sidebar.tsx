@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Clock, CalendarClock, Sparkles, BarChart3, Settings } from 'lucide-react'
+import { Clock, CalendarClock, Sparkles, BarChart3, Settings, LogOut } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppContext } from '@/context/AppContext'
 import { auth } from '@/lib/auth'
@@ -33,29 +33,16 @@ export function Sidebar({ pendingCount = 0, publishedCount = 0 }: SidebarProps) 
   ]
 
   return (
-    <aside className="hidden md:flex fixed left-0 top-0 h-screen w-[220px] bg-white border-r border-gray-200 flex-col">
+    <aside className="hidden md:flex fixed left-0 top-0 h-screen w-[220px] bg-surface border-r border-stroke flex-col z-40">
       {/* Logo */}
-      <div className="p-6 border-b border-gray-200">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-white" />
-          </div>
-          <span className="font-semibold text-lg">PostFlow</span>
-        </div>
-      </div>
-
-      {/* Client Info */}
-      <div className="px-4 py-3 border-b border-gray-200">
-        <div className="text-sm font-medium text-gray-900">
-          {mounted ? (user?.name || 'User') : 'User'}
-        </div>
-        <div className="text-xs text-gray-500">
-          {mounted ? (user?.role === 'client' ? 'Member' : user?.role || 'Member') : 'Member'}
-        </div>
+      <div className="px-5 py-5 border-b border-stroke">
+        <span className="font-display italic text-xl accent-gradient-text font-semibold">
+          Qalam
+        </span>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-1">
+      <nav className="flex-1 px-3 py-4 space-y-1">
         {navItems.map((item) => {
           const isActive = pathname === item.href
           const Icon = item.icon
@@ -65,25 +52,23 @@ export function Sidebar({ pendingCount = 0, publishedCount = 0 }: SidebarProps) 
               key={item.href}
               href={item.href}
               className={cn(
-                'flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors relative',
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all relative',
                 isActive
-                  ? 'bg-blue-50 text-blue-600'
-                  : 'text-gray-700 hover:bg-gray-100',
+                  ? 'bg-surface-2 text-accent border-l-2 border-accent pl-[10px]'
+                  : 'text-muted hover:bg-surface-2 hover:text-text-primary',
                 item.isPulsing && 'scheduled-pulse'
               )}
             >
-              <div className="flex items-center gap-3 relative">
-                <Icon className="w-4 h-4" />
-                <span>{item.label}</span>
-                {/* Pulse notification dot */}
-                {item.isPulsing && (
-                  <span className="pulse-dot absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full" />
-                )}
-              </div>
+              <Icon className="w-4 h-4 flex-shrink-0" />
+              <span>{item.label}</span>
               {item.badge !== undefined && item.badge > 0 && (
-                <span className="px-2 py-0.5 text-xs font-semibold bg-blue-500 text-white rounded-full min-w-5 text-center">
+                <span className="ml-auto bg-accent text-bg text-xs font-bold px-1.5 py-0.5 rounded-full">
                   {item.badge}
                 </span>
+              )}
+              {/* Pulse notification dot */}
+              {item.isPulsing && (
+                <span className="pulse-dot absolute top-2 right-2 w-2 h-2 bg-accent rounded-full" />
               )}
               {/* Nav glow background */}
               {item.isPulsing && <span className="nav-glow absolute inset-0 rounded-lg -z-10" />}
@@ -92,33 +77,19 @@ export function Sidebar({ pendingCount = 0, publishedCount = 0 }: SidebarProps) 
         })}
       </nav>
 
-      {/* Bottom Stats */}
-      <div className="p-4 border-t border-gray-200 space-y-2">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-gray-500">Pending</span>
-          <span className="font-semibold text-orange-600">{pendingCount}</span>
-        </div>
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-gray-500">Published</span>
-          <span className="font-semibold text-blue-600">{publishedCount}</span>
-        </div>
-      </div>
-
-      {/* User & Logout */}
-      <div className="mt-auto pt-4 border-t border-gray-200 p-3">
-        {user && (
-          <div className="px-3 mb-3">
-            <p className="text-xs font-medium text-gray-900 truncate">{user.name}</p>
-            <p className="text-xs text-gray-500">Signed in</p>
+      {/* User section */}
+      <div className="px-3 py-4 border-t border-stroke space-y-2">
+        {mounted && user && (
+          <div className="px-3 py-2">
+            <p className="text-sm font-medium text-text-primary truncate">{user.name}</p>
+            <p className="text-xs text-muted">Free Plan</p>
           </div>
         )}
         <button
           onClick={() => auth.logout()}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted hover:text-red-300 hover:bg-red-500/5 rounded-lg transition-colors"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
+          <LogOut className="w-4 h-4" />
           Sign out
         </button>
       </div>

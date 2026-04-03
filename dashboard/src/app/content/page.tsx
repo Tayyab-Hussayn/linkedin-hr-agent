@@ -154,39 +154,39 @@ export default function ContentPage() {
       <h1 className="text-2xl font-bold">Content</h1>
 
       {/* Generation Controls Card */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+      <div className="bg-surface rounded-2xl border border-stroke shadow-sm p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
             <Sparkles className="w-5 h-5 text-purple-600" />
           </div>
           <div>
             <h2 className="font-semibold text-lg">Auto-Generation</h2>
-            <p className="text-sm text-gray-500">Runs daily at 8:00 AM & 6:00 PM</p>
+            <p className="text-sm text-muted">Runs daily at 8:00 AM & 6:00 PM</p>
           </div>
         </div>
 
         {/* Status */}
         <div className="flex items-center gap-2 mb-4 p-3 bg-green-50 rounded-lg border border-green-200">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+          <div className="w-2 h-2 accent-gradient rounded-full animate-pulse" />
           <span className="text-sm font-medium text-green-700">Auto-generation is ON</span>
         </div>
 
         {/* Countdown */}
-        <div className="flex items-center gap-2 mb-4 text-sm text-gray-600">
+        <div className="flex items-center gap-2 mb-4 text-sm text-muted">
           <Clock className="w-4 h-4" />
-          <span>Next run in <span className="font-semibold text-blue-600">{hours}h {minutes}m</span></span>
+          <span>Next run in <span className="font-semibold text-accent">{hours}h {minutes}m</span></span>
         </div>
 
         {/* Daily Limit Info */}
-        <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+        <div className="mb-4 p-3 bg-bg rounded-lg">
           <div className="flex items-center justify-between text-sm mb-1">
-            <span className="text-gray-600">Generated today</span>
+            <span className="text-muted">Generated today</span>
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-gray-900">
+              <span className="font-semibold text-text-primary">
                 {mounted && stats ? `${stats.generated_today} / ${stats.daily_post_limit}` : '...'}
               </span>
               {mounted && stats && (
-                <span className="text-xs text-gray-400">{stats.plan_name} Plan</span>
+                <span className="text-xs text-muted">{stats.plan_name} Plan</span>
               )}
             </div>
           </div>
@@ -194,7 +194,7 @@ export default function ContentPage() {
             <div
               className={cn(
                 "h-full transition-all duration-300",
-                isLimitReached ? "bg-red-500" : "bg-blue-500"
+                isLimitReached ? "bg-red-500/100" : "accent-gradient"
               )}
               style={{
                 width: mounted && stats
@@ -206,10 +206,10 @@ export default function ContentPage() {
           {isLimitReached && (
             <button
               onClick={handleResetLimit}
-              className="mt-2 flex items-center gap-1.5 text-xs text-gray-500
-                         hover:text-blue-600 transition-colors cursor-pointer
-                         bg-gray-100 hover:bg-blue-50 px-3 py-1.5 rounded-full
-                         border border-gray-200 hover:border-blue-200"
+              className="mt-2 flex items-center gap-1.5 text-xs text-muted
+                         hover:text-accent transition-colors cursor-pointer
+                         bg-surface-2 hover:bg-accent/5 px-3 py-1.5 rounded-full
+                         border border-stroke hover:border-blue-200"
             >
               <span>↺</span>
               <span>Reset daily limit for testing</span>
@@ -221,7 +221,7 @@ export default function ContentPage() {
         <button
           onClick={handleGenerateNow}
           disabled={isGenerating || !stats?.can_generate_now || (mounted && isLimitReached)}
-          className="w-full px-4 py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full px-4 py-3 accent-gradient text-white rounded-xl font-medium hover:accent-gradient transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {isGenerating ? (
             <>
@@ -242,13 +242,13 @@ export default function ContentPage() {
       </div>
 
       {/* Scheduled Posts Card */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+      <div className="bg-surface rounded-2xl border border-stroke shadow-sm p-6">
         <h2 className="font-semibold text-lg mb-4">Scheduled Posts</h2>
 
         {isLoading ? (
-          <div className="text-sm text-gray-500">Loading...</div>
+          <div className="text-sm text-muted">Loading...</div>
         ) : approvedPosts.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
+          <div className="text-center py-8 text-muted">
             <p className="text-sm">No approved posts yet</p>
             <p className="text-xs mt-1">Approve posts from the Queue to see them here</p>
           </div>
@@ -260,19 +260,19 @@ export default function ContentPage() {
               const hook = post.content.split('\n').filter(l => l.trim())[0] || post.content.substring(0, 100)
 
               return (
-                <div key={post.id} className="p-4 border border-gray-200 rounded-xl hover:border-blue-300 transition-colors">
+                <div key={post.id} className="p-4 border border-stroke rounded-xl hover:border-blue-300 transition-colors">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <span className={cn('inline-block px-2 py-1 text-xs font-semibold rounded-full border mb-2', pillarColor)}>
                         {post.topic_pillar}
                       </span>
-                      <p className="font-serif text-sm font-bold text-gray-900 line-clamp-2">
+                      <p className="font-serif text-sm font-bold text-text-primary line-clamp-2">
                         {hook}
                       </p>
                     </div>
                     <button
                       onClick={() => handlePublishNow(post.id)}
-                      className="px-3 py-1.5 bg-blue-500 text-white text-xs font-medium rounded-lg hover:bg-blue-600 transition-colors whitespace-nowrap"
+                      className="px-3 py-1.5 accent-gradient text-white text-xs font-medium rounded-lg hover:accent-gradient transition-colors whitespace-nowrap"
                     >
                       Publish Now
                     </button>
@@ -286,31 +286,31 @@ export default function ContentPage() {
 
       {/* This Week's Activity Card */}
       {stats && (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+        <div className="bg-surface rounded-2xl border border-stroke shadow-sm p-6">
           <div className="flex items-center gap-3 mb-4">
-            <TrendingUp className="w-5 h-5 text-gray-600" />
+            <TrendingUp className="w-5 h-5 text-muted" />
             <h2 className="font-semibold text-lg">This Week's Activity</h2>
           </div>
 
           <div className="grid grid-cols-3 gap-4 mb-4">
-            <div className="text-center p-3 bg-blue-50 rounded-lg">
-              <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
-              <div className="text-xs text-gray-600 mt-1">Generated</div>
+            <div className="text-center p-3 bg-accent/5 rounded-lg">
+              <div className="text-2xl font-bold text-accent">{stats.total}</div>
+              <div className="text-xs text-muted mt-1">Generated</div>
             </div>
             <div className="text-center p-3 bg-green-50 rounded-lg">
               <div className="text-2xl font-bold text-green-600">{stats.approved}</div>
-              <div className="text-xs text-gray-600 mt-1">Approved</div>
+              <div className="text-xs text-muted mt-1">Approved</div>
             </div>
-            <div className="text-center p-3 bg-red-50 rounded-lg">
-              <div className="text-2xl font-bold text-red-600">{stats.rejected}</div>
-              <div className="text-xs text-gray-600 mt-1">Rejected</div>
+            <div className="text-center p-3 bg-red-500/10 rounded-lg">
+              <div className="text-2xl font-bold text-red-300">{stats.rejected}</div>
+              <div className="text-xs text-muted mt-1">Rejected</div>
             </div>
           </div>
 
           {stats.total > 0 && (
-            <div className="pt-4 border-t border-gray-200">
-              <div className="text-sm text-gray-600">
-                Approval rate: <span className="font-semibold text-gray-900">
+            <div className="pt-4 border-t border-stroke">
+              <div className="text-sm text-muted">
+                Approval rate: <span className="font-semibold text-text-primary">
                   {Math.round((stats.approved / stats.total) * 100)}%
                 </span>
               </div>

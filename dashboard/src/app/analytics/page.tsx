@@ -41,7 +41,7 @@ export default function AnalyticsPage() {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold">Analytics</h1>
-        <div className="text-center py-12 text-gray-500">Loading analytics...</div>
+        <div className="text-center py-12 text-muted">Loading analytics...</div>
       </div>
     )
   }
@@ -52,9 +52,9 @@ export default function AnalyticsPage() {
 
   const getHealthLabel = (score: number) => {
     if (score >= 90) return { label: 'Excellent', color: 'text-green-600' }
-    if (score >= 70) return { label: 'Good', color: 'text-blue-600' }
+    if (score >= 70) return { label: 'Good', color: 'text-accent' }
     if (score >= 50) return { label: 'Needs Attention', color: 'text-orange-600' }
-    return { label: 'Critical', color: 'text-red-600' }
+    return { label: 'Critical', color: 'text-red-300' }
   }
 
   const healthLabel = getHealthLabel(healthScore)
@@ -65,7 +65,7 @@ export default function AnalyticsPage() {
         <h1 className="text-2xl font-bold">Analytics</h1>
 
         {/* Period Selector */}
-        <div className="flex items-center gap-1 bg-white rounded-lg border border-gray-200 p-1">
+        <div className="flex items-center gap-1 bg-surface rounded-lg border border-stroke p-1">
           {[
             { value: 'week', label: 'This Week' },
             { value: '30days', label: '30 Days' },
@@ -77,8 +77,8 @@ export default function AnalyticsPage() {
               className={cn(
                 'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
                 period === option.value
-                  ? 'bg-blue-500 text-white'
-                  : 'text-gray-600 hover:bg-gray-100'
+                  ? 'accent-gradient text-white'
+                  : 'text-muted hover:bg-surface-2'
               )}
             >
               {option.label}
@@ -100,7 +100,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Progress Bar */}
-        <div className="h-3 bg-white/20 rounded-full overflow-hidden">
+        <div className="h-3 bg-surface/20 rounded-full overflow-hidden">
           <div
             className="h-full bg-gradient-to-r from-green-400 to-blue-500 transition-all duration-1000 ease-out"
             style={{ width: `${healthScore}%` }}
@@ -110,42 +110,42 @@ export default function AnalyticsPage() {
 
       {/* Overview Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl border border-gray-200 p-4">
-          <div className="text-sm text-gray-500 mb-1">Generated</div>
-          <div className="text-3xl font-bold text-gray-900">{stats.total}</div>
+        <div className="bg-surface rounded-2xl border border-stroke p-4">
+          <div className="text-sm text-muted mb-1">Generated</div>
+          <div className="text-3xl font-bold text-text-primary">{stats.total}</div>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-200 p-4">
-          <div className="text-sm text-gray-500 mb-1">Approved</div>
+        <div className="bg-surface rounded-2xl border border-stroke p-4">
+          <div className="text-sm text-muted mb-1">Approved</div>
           <div className="text-3xl font-bold text-green-600">{stats.approved}</div>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-200 p-4">
-          <div className="text-sm text-gray-500 mb-1">Published</div>
-          <div className="text-3xl font-bold text-blue-600">{stats.published}</div>
+        <div className="bg-surface rounded-2xl border border-stroke p-4">
+          <div className="text-sm text-muted mb-1">Published</div>
+          <div className="text-3xl font-bold text-accent">{stats.published}</div>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-200 p-4">
-          <div className="text-sm text-gray-500 mb-1">Rejected</div>
-          <div className="text-3xl font-bold text-red-600">{stats.rejected}</div>
+        <div className="bg-surface rounded-2xl border border-stroke p-4">
+          <div className="text-sm text-muted mb-1">Rejected</div>
+          <div className="text-3xl font-bold text-red-300">{stats.rejected}</div>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-200 p-4">
-          <div className="text-sm text-gray-500 mb-1">Approval Rate</div>
+        <div className="bg-surface rounded-2xl border border-stroke p-4">
+          <div className="text-sm text-muted mb-1">Approval Rate</div>
           <div className="text-3xl font-bold text-purple-600">{approvalRate}%</div>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-200 p-4">
-          <div className="text-sm text-gray-500 mb-1">Pending</div>
+        <div className="bg-surface rounded-2xl border border-stroke p-4">
+          <div className="text-sm text-muted mb-1">Pending</div>
           <div className="text-3xl font-bold text-orange-600">{stats.pending}</div>
         </div>
       </div>
 
       {/* Insight Box */}
-      <div className="bg-blue-50 border-l-4 border-blue-500 rounded-lg p-4 flex items-start gap-3">
-        <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+      <div className="bg-accent/5 border-l-4 border-blue-500 rounded-lg p-4 flex items-start gap-3">
+        <AlertCircle className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
         <p className="text-sm text-blue-900">{insight}</p>
       </div>
 
       {/* Daily Activity Chart */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-6">
+      <div className="bg-surface rounded-2xl border border-stroke p-6">
         <div className="flex items-center gap-3 mb-6">
-          <BarChart3 className="w-5 h-5 text-gray-600" />
+          <BarChart3 className="w-5 h-5 text-muted" />
           <h2 className="font-semibold text-lg">Daily Activity (Last 7 Days)</h2>
         </div>
 
@@ -160,11 +160,11 @@ export default function AnalyticsPage() {
 
             return (
               <div key={day}>
-                <div className="text-xs text-gray-500 mb-1">{day}</div>
+                <div className="text-xs text-muted mb-1">{day}</div>
                 <div className="flex items-center gap-1 h-8">
                   {generated > 0 && (
                     <div
-                      className="bg-blue-500 rounded h-full flex items-center justify-center text-xs text-white font-medium"
+                      className="accent-gradient rounded h-full flex items-center justify-center text-xs text-white font-medium"
                       style={{ width: `${(generated / maxValue) * 100}%`, minWidth: '24px' }}
                     >
                       {generated}
@@ -172,7 +172,7 @@ export default function AnalyticsPage() {
                   )}
                   {published > 0 && (
                     <div
-                      className="bg-green-500 rounded h-full flex items-center justify-center text-xs text-white font-medium"
+                      className="accent-gradient rounded h-full flex items-center justify-center text-xs text-white font-medium"
                       style={{ width: `${(published / maxValue) * 100}%`, minWidth: '24px' }}
                     >
                       {published}
@@ -180,7 +180,7 @@ export default function AnalyticsPage() {
                   )}
                   {rejected > 0 && (
                     <div
-                      className="bg-red-500 rounded h-full flex items-center justify-center text-xs text-white font-medium"
+                      className="bg-red-500/100 rounded h-full flex items-center justify-center text-xs text-white font-medium"
                       style={{ width: `${(rejected / maxValue) * 100}%`, minWidth: '24px' }}
                     >
                       {rejected}
@@ -193,25 +193,25 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Legend */}
-        <div className="flex items-center gap-4 mt-6 pt-4 border-t border-gray-200">
+        <div className="flex items-center gap-4 mt-6 pt-4 border-t border-stroke">
           <div className="flex items-center gap-2 text-xs">
-            <div className="w-3 h-3 bg-blue-500 rounded" />
-            <span className="text-gray-600">Generated</span>
+            <div className="w-3 h-3 accent-gradient rounded" />
+            <span className="text-muted">Generated</span>
           </div>
           <div className="flex items-center gap-2 text-xs">
-            <div className="w-3 h-3 bg-green-500 rounded" />
-            <span className="text-gray-600">Published</span>
+            <div className="w-3 h-3 accent-gradient rounded" />
+            <span className="text-muted">Published</span>
           </div>
           <div className="flex items-center gap-2 text-xs">
-            <div className="w-3 h-3 bg-red-500 rounded" />
-            <span className="text-gray-600">Rejected</span>
+            <div className="w-3 h-3 bg-red-500/100 rounded" />
+            <span className="text-muted">Rejected</span>
           </div>
         </div>
       </div>
 
       {/* Pillar Performance */}
       {pillarStats.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-200 p-6">
+        <div className="bg-surface rounded-2xl border border-stroke p-6">
           <h2 className="font-semibold text-lg mb-4">Content Pillar Performance</h2>
           <div className="space-y-4">
             {pillarStats.map((pillar, index) => {
@@ -222,20 +222,20 @@ export default function AnalyticsPage() {
                     <span className={cn('px-3 py-1 text-xs font-semibold rounded-full border', pillarColor)}>
                       {pillar.topic_pillar}
                     </span>
-                    <span className="text-sm font-semibold text-gray-900">
+                    <span className="text-sm font-semibold text-text-primary">
                       {pillar.approval_rate_pct}% approval
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <div className="flex items-center gap-2 text-xs text-muted">
                     <span>{pillar.total} total</span>
                     <span>•</span>
                     <span className="text-green-600">{pillar.approved} approved</span>
                     <span>•</span>
-                    <span className="text-red-600">{pillar.rejected} rejected</span>
+                    <span className="text-red-300">{pillar.rejected} rejected</span>
                   </div>
                   <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-green-500 transition-all duration-500"
+                      className="h-full accent-gradient transition-all duration-500"
                       style={{ width: `${pillar.approval_rate_pct}%` }}
                     />
                   </div>
@@ -248,7 +248,7 @@ export default function AnalyticsPage() {
 
       {/* Recent Posts */}
       {recentPosts.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-200 p-6">
+        <div className="bg-surface rounded-2xl border border-stroke p-6">
           <h2 className="font-semibold text-lg mb-4">Recent Posts</h2>
           <div className="space-y-3">
             {recentPosts.map((post) => {
@@ -259,12 +259,12 @@ export default function AnalyticsPage() {
               const statusColors: Record<string, string> = {
                 Published: 'bg-blue-100 text-blue-700 border-blue-200',
                 Approved: 'bg-green-100 text-green-700 border-green-200',
-                Rejected: 'bg-red-100 text-red-700 border-red-200',
+                Rejected: 'bg-red-100 text-red-300 border-red-500/20',
                 Pending: 'bg-orange-100 text-orange-700 border-orange-200',
               }
 
               return (
-                <div key={post.id} className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg">
+                <div key={post.id} className="flex items-start gap-3 p-3 border border-stroke rounded-lg">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2">
                       <span className={cn('px-2 py-0.5 text-xs font-semibold rounded-full border', pillarColor)}>
@@ -274,10 +274,10 @@ export default function AnalyticsPage() {
                         {statusLabel}
                       </span>
                     </div>
-                    <p className="font-serif text-sm font-bold text-gray-900 line-clamp-2 mb-1">
+                    <p className="font-serif text-sm font-bold text-text-primary line-clamp-2 mb-1">
                       {hook}
                     </p>
-                    <p className="text-xs text-gray-500">{formatRelativeTime(post.created_at)}</p>
+                    <p className="text-xs text-muted">{formatRelativeTime(post.created_at)}</p>
                   </div>
                 </div>
               )
@@ -287,9 +287,9 @@ export default function AnalyticsPage() {
       )}
 
       {/* Post History Section */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-6">
+      <div className="bg-surface rounded-2xl border border-stroke p-6">
         <h2 className="font-semibold text-lg mb-4">Post History</h2>
-        <p className="text-sm text-gray-500 mb-4">Complete history of all posts with their current status</p>
+        <p className="text-sm text-muted mb-4">Complete history of all posts with their current status</p>
 
         <HistorySection />
       </div>
@@ -318,13 +318,13 @@ function HistorySection() {
   }
 
   if (isLoading) {
-    return <div className="text-center py-8 text-gray-500">Loading history...</div>
+    return <div className="text-center py-8 text-muted">Loading history...</div>
   }
 
   if (historyPosts.length === 0) {
     return (
       <div className="text-center py-8">
-        <p className="text-gray-500">No post history yet</p>
+        <p className="text-muted">No post history yet</p>
       </div>
     )
   }
@@ -339,12 +339,12 @@ function HistorySection() {
         const statusColors: Record<string, string> = {
           Published: 'bg-blue-100 text-blue-700 border-blue-200',
           Approved: 'bg-green-100 text-green-700 border-green-200',
-          Rejected: 'bg-red-100 text-red-700 border-red-200',
+          Rejected: 'bg-red-100 text-red-300 border-red-500/20',
           Pending: 'bg-orange-100 text-orange-700 border-orange-200',
         }
 
         return (
-          <div key={post.id} className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+          <div key={post.id} className="flex items-start gap-3 p-3 border border-stroke rounded-lg hover:bg-bg transition-colors">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <span className={cn('px-2 py-0.5 text-xs font-semibold rounded-full border', pillarColor)}>
@@ -354,10 +354,10 @@ function HistorySection() {
                   {statusLabel}
                 </span>
               </div>
-              <p className="font-serif text-sm font-bold text-gray-900 line-clamp-1 mb-1">
+              <p className="font-serif text-sm font-bold text-text-primary line-clamp-1 mb-1">
                 {hook}
               </p>
-              <p className="text-xs text-gray-500">{formatRelativeTime(post.created_at)}</p>
+              <p className="text-xs text-muted">{formatRelativeTime(post.created_at)}</p>
             </div>
           </div>
         )

@@ -202,7 +202,7 @@ export default function ScheduledPage() {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold">Scheduled Posts</h1>
-        <div className="text-center py-12 text-gray-500">Loading scheduled posts...</div>
+        <div className="text-center py-12 text-muted">Loading scheduled posts...</div>
       </div>
     )
   }
@@ -213,15 +213,15 @@ export default function ScheduledPage() {
         <h1 className="text-2xl font-bold">Scheduled Posts</h1>
 
         {/* Empty State */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
-          <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CalendarCheck className="w-8 h-8 text-blue-500" />
+        <div className="bg-surface rounded-2xl border border-stroke p-12 text-center">
+          <div className="w-16 h-16 bg-accent/5 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CalendarCheck className="w-8 h-8 text-accent" />
           </div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">No posts scheduled</h2>
-          <p className="text-gray-500 mb-6">Approve posts from the Queue to schedule them</p>
+          <h2 className="text-xl font-semibold text-text-primary mb-2">No posts scheduled</h2>
+          <p className="text-muted mb-6">Approve posts from the Queue to schedule them</p>
           <Link
             href="/queue"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors"
+            className="inline-flex items-center gap-2 px-6 py-3 accent-gradient text-white rounded-xl font-medium hover:accent-gradient transition-colors"
           >
             Go to Queue →
           </Link>
@@ -236,8 +236,8 @@ export default function ScheduledPage() {
       <div>
         <h1 className="text-2xl font-bold mb-2">Scheduled Posts</h1>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">{posts.length} posts waiting to publish</span>
-          <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-full border border-blue-200">
+          <span className="text-sm text-muted">{posts.length} posts waiting to publish</span>
+          <span className="px-2 py-1 bg-accent/5 text-blue-700 text-xs font-medium rounded-full border border-blue-200">
             Auto-publishes at scheduled time
           </span>
         </div>
@@ -259,7 +259,7 @@ export default function ScheduledPage() {
             <div
               key={post.id}
               className={cn(
-                'bg-white rounded-2xl border border-gray-200 shadow-sm p-5 transition-all duration-300',
+                'bg-surface rounded-2xl border border-stroke shadow-sm p-5 transition-all duration-300',
                 removingIds.has(post.id) && 'opacity-0 scale-95 h-0 overflow-hidden'
               )}
             >
@@ -271,12 +271,12 @@ export default function ScheduledPage() {
               </div>
 
               {/* Content Preview */}
-              <p className="text-sm text-gray-700 line-clamp-3 mb-4">
+              <p className="text-sm text-text-primary line-clamp-3 mb-4">
                 {preview}
               </p>
 
               {/* Schedule Info */}
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
+              <div className="bg-accent/5 border border-blue-200 rounded-xl p-3 mb-4">
                 <div className="flex items-center gap-2 text-blue-900">
                   <Clock className="w-4 h-4" />
                   <span className="text-sm font-semibold">
@@ -290,14 +290,14 @@ export default function ScheduledPage() {
                 <button
                   onClick={() => handlePublishNow(post.id)}
                   disabled={publishingId === post.id}
-                  className="flex-1 px-4 py-2.5 bg-green-500 text-white rounded-xl font-medium hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-4 py-2.5 accent-gradient text-white rounded-xl font-medium hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {publishingId === post.id ? 'Publishing...' : 'Publish Now'}
                 </button>
 
                 <button
                   onClick={() => handleRemove(post.id)}
-                  className="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+                  className="px-4 py-2.5 bg-surface-2 text-muted rounded-xl font-medium hover:bg-gray-200 transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -321,19 +321,19 @@ export default function ScheduledPage() {
               className={cn(
                 'w-full px-4 py-3 rounded-xl font-medium transition-all text-left flex items-center gap-3',
                 scheduleMode === 'default'
-                  ? 'bg-blue-500 text-white shadow-md'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'accent-gradient text-white shadow-md'
+                  : 'bg-surface-2 text-text-primary hover:bg-gray-200'
               )}
             >
               <div className={cn(
                 'w-5 h-5 rounded-full border-2 flex items-center justify-center',
                 scheduleMode === 'default' ? 'border-white' : 'border-gray-400'
               )}>
-                {scheduleMode === 'default' && <div className="w-2.5 h-2.5 bg-white rounded-full" />}
+                {scheduleMode === 'default' && <div className="w-2.5 h-2.5 bg-surface rounded-full" />}
               </div>
               <div>
                 <div className="font-semibold">Default ({getDefaultSlotDisplay()})</div>
-                <div className={cn('text-xs', scheduleMode === 'default' ? 'text-blue-100' : 'text-gray-500')}>
+                <div className={cn('text-xs', scheduleMode === 'default' ? 'text-blue-100' : 'text-muted')}>
                   Auto-scheduled by system
                 </div>
               </div>
@@ -344,19 +344,19 @@ export default function ScheduledPage() {
               className={cn(
                 'w-full px-4 py-3 rounded-xl font-medium transition-all text-left flex items-center gap-3',
                 scheduleMode === 'custom'
-                  ? 'bg-blue-500 text-white shadow-md'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'accent-gradient text-white shadow-md'
+                  : 'bg-surface-2 text-text-primary hover:bg-gray-200'
               )}
             >
               <div className={cn(
                 'w-5 h-5 rounded-full border-2 flex items-center justify-center',
                 scheduleMode === 'custom' ? 'border-white' : 'border-gray-400'
               )}>
-                {scheduleMode === 'custom' && <div className="w-2.5 h-2.5 bg-white rounded-full" />}
+                {scheduleMode === 'custom' && <div className="w-2.5 h-2.5 bg-surface rounded-full" />}
               </div>
               <div>
                 <div className="font-semibold">Custom time</div>
-                <div className={cn('text-xs', scheduleMode === 'custom' ? 'text-blue-100' : 'text-gray-500')}>
+                <div className={cn('text-xs', scheduleMode === 'custom' ? 'text-blue-100' : 'text-muted')}>
                   Choose specific date and time
                 </div>
               </div>
@@ -368,15 +368,15 @@ export default function ScheduledPage() {
             <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
               {/* Date Selection */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
+                <label className="block text-sm font-medium text-text-primary mb-2">Date</label>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setSelectedDate('today')}
                     className={cn(
                       'flex-1 px-3 py-2 rounded-lg font-medium text-sm transition-colors',
                       selectedDate === 'today'
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'accent-gradient text-white'
+                        : 'bg-surface-2 text-text-primary hover:bg-gray-200'
                     )}
                   >
                     Today
@@ -386,8 +386,8 @@ export default function ScheduledPage() {
                     className={cn(
                       'flex-1 px-3 py-2 rounded-lg font-medium text-sm transition-colors',
                       selectedDate === 'tomorrow'
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'accent-gradient text-white'
+                        : 'bg-surface-2 text-text-primary hover:bg-gray-200'
                     )}
                   >
                     Tomorrow
@@ -397,8 +397,8 @@ export default function ScheduledPage() {
                     className={cn(
                       'flex-1 px-3 py-2 rounded-lg font-medium text-sm transition-colors',
                       selectedDate === 'day2'
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'accent-gradient text-white'
+                        : 'bg-surface-2 text-text-primary hover:bg-gray-200'
                     )}
                   >
                     +2 days
@@ -408,7 +408,7 @@ export default function ScheduledPage() {
 
               {/* Time Selection */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Time</label>
+                <label className="block text-sm font-medium text-text-primary mb-2">Time</label>
                 <div className="grid grid-cols-2 gap-2">
                   {['09:00', '12:00', '18:00', '21:00'].map((time) => (
                     <button
@@ -417,8 +417,8 @@ export default function ScheduledPage() {
                       className={cn(
                         'px-3 py-2 rounded-lg font-medium text-sm transition-colors',
                         selectedTime === time
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          ? 'accent-gradient text-white'
+                          : 'bg-surface-2 text-text-primary hover:bg-gray-200'
                       )}
                     >
                       {time === '09:00' && '9:00 AM'}
@@ -432,8 +432,8 @@ export default function ScheduledPage() {
                     className={cn(
                       'px-3 py-2 rounded-lg font-medium text-sm transition-colors',
                       selectedTime === 'custom'
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'accent-gradient text-white'
+                        : 'bg-surface-2 text-text-primary hover:bg-gray-200'
                     )}
                   >
                     Custom...
@@ -445,7 +445,7 @@ export default function ScheduledPage() {
                     type="time"
                     value={customTime}
                     onChange={(e) => setCustomTime(e.target.value)}
-                    className="mt-2 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="mt-2 w-full px-3 py-2 border border-stroke rounded-lg focus:outline-none focus:border-accent"
                   />
                 )}
               </div>
@@ -456,13 +456,13 @@ export default function ScheduledPage() {
           <div className="flex gap-2 pt-2">
             <button
               onClick={() => setReschedulePost(null)}
-              className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+              className="flex-1 px-4 py-3 bg-surface-2 text-text-primary rounded-xl font-medium hover:bg-gray-200 transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleSaveReschedule}
-              className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-3 accent-gradient text-white rounded-xl font-medium hover:accent-gradient transition-colors flex items-center justify-center gap-2"
             >
               <Clock className="w-4 h-4" />
               Reschedule

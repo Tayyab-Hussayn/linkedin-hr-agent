@@ -9,11 +9,11 @@ interface StatCardProps {
 
 export function StatCard({ label, value, color, icon }: StatCardProps) {
   const colors = {
-    blue: 'bg-blue-50 text-blue-700 border-blue-200',
-    green: 'bg-green-50 text-green-700 border-green-200',
-    orange: 'bg-orange-50 text-orange-700 border-orange-200',
-    red: 'bg-red-50 text-red-700 border-red-200',
-    purple: 'bg-purple-50 text-purple-700 border-purple-200',
+    blue: 'bg-accent/10 text-accent border-accent/30',
+    green: 'bg-green-500/10 text-green-500 border-green-500/30',
+    orange: 'bg-accent/10 text-accent border-accent/30',
+    red: 'bg-red-600/10 text-red-300 border-red-600/30',
+    purple: 'bg-accent/10 text-accent border-accent/30',
   }
 
   return (

@@ -43,36 +43,27 @@ export function Header({ onRefresh }: HeaderProps) {
   }
 
   return (
-    <header className="fixed top-0 left-0 right-0 h-[60px] bg-white border-b border-gray-200 z-50">
-      <div className="h-full px-4 md:px-6 flex items-center justify-between">
-        {/* Left: Logo */}
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-white" />
-          </div>
-          <span className="font-semibold text-lg">QALAM</span>
-        </div>
+    <header className="fixed top-0 left-0 right-0 md:left-[220px] h-[60px] bg-surface/80 backdrop-blur-md border-b border-stroke z-30 flex items-center justify-between px-4">
+      {/* Mobile logo */}
+      <span className="md:hidden font-display italic text-lg accent-gradient-text font-semibold">
+        Qalam
+      </span>
 
-        {/* Right: Status & Actions */}
-        <div className="flex items-center gap-4">
-          {/* Status */}
-          <div className="hidden sm:flex items-center gap-2 text-sm">
-            <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'} animate-pulse`} />
-            <span className="text-gray-500">Last updated</span>
-            <span className="font-medium text-gray-900">{lastUpdated}</span>
-          </div>
-
-          {/* Refresh Button */}
-          <button
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
-            title="Refresh"
-          >
-            <RefreshCw className={`w-5 h-5 text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
+      {/* Last updated */}
+      <div className="hidden md:flex items-center gap-2 text-xs text-muted">
+        <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'} inline-block`}></span>
+        Last updated {lastUpdated}
       </div>
+
+      {/* Refresh button */}
+      <button
+        onClick={handleRefresh}
+        disabled={isRefreshing}
+        className="p-2 rounded-lg text-muted hover:text-text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
+        title="Refresh"
+      >
+        <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+      </button>
     </header>
   )
 }

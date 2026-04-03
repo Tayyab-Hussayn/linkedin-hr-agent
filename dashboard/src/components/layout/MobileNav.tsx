@@ -23,7 +23,7 @@ export function MobileNav({ pendingCount = 0 }: MobileNavProps) {
   ]
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-surface border-t border-stroke z-50">
       <div className="flex items-center justify-around h-16">
         {navItems.map((item) => {
           const isActive = pathname === item.href
@@ -35,20 +35,20 @@ export function MobileNav({ pendingCount = 0 }: MobileNavProps) {
               href={item.href}
               className={cn(
                 'flex flex-col items-center justify-center gap-1 px-3 py-2 flex-1 relative',
-                isActive ? 'text-blue-600' : 'text-gray-500',
+                isActive ? 'text-accent' : 'text-muted',
                 item.isPulsing && 'scheduled-pulse'
               )}
             >
               <div className="relative">
                 <Icon className="w-5 h-5" />
                 {item.badge !== undefined && item.badge > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-accent text-bg text-[10px] font-bold rounded-full flex items-center justify-center">
                     {item.badge > 9 ? '9+' : item.badge}
                   </span>
                 )}
                 {/* Pulse notification dot */}
                 {item.isPulsing && (
-                  <span className="pulse-dot absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full" />
+                  <span className="pulse-dot absolute -top-1 -right-1 w-2 h-2 bg-accent rounded-full" />
                 )}
               </div>
               <span className="text-[10px] font-medium">{item.label}</span>

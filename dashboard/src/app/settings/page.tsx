@@ -172,36 +172,36 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-gray-400 text-sm">Loading settings...</div>
+        <div className="text-muted text-sm">Loading settings...</div>
       </div>
     )
   }
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Settings</h1>
+      <h1 className="text-2xl font-bold text-text-primary mb-6">Settings</h1>
 
       {/* Message */}
       {message && (
         <div className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium ${
           message.type === 'success'
             ? 'bg-green-50 text-green-800 border border-green-200'
-            : 'bg-red-50 text-red-800 border border-red-200'
+            : 'bg-red-500/10 text-red-800 border border-red-500/20'
         }`}>
           {message.text}
         </div>
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-6">
+      <div className="flex gap-1 bg-surface-2 p-1 rounded-xl mb-6">
         {(['account', 'content'] as Tab[]).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
               activeTab === tab
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'bg-surface text-text-primary shadow-sm'
+                : 'text-muted hover:text-text-primary'
             }`}
           >
             {tab === 'account' ? 'Account' : 'Content Profile'}
@@ -212,13 +212,13 @@ export default function SettingsPage() {
       {/* Account Tab */}
       {activeTab === 'account' && (
         <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
-            <h2 className="font-semibold text-gray-900">LinkedIn Credentials</h2>
-            <p className="text-xs text-gray-500 -mt-2">
+          <div className="bg-surface rounded-2xl border border-stroke p-6 space-y-4">
+            <h2 className="font-semibold text-text-primary">LinkedIn Credentials</h2>
+            <p className="text-xs text-muted -mt-2">
               Used to publish posts on your behalf. Leave blank to keep existing.
             </p>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-text-primary mb-1">
                 LinkedIn Email
               </label>
               <input
@@ -226,11 +226,11 @@ export default function SettingsPage() {
                 value={linkedinEmail}
                 onChange={e => setLinkedinEmail(e.target.value)}
                 placeholder="your@linkedin-email.com"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2.5 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-text-primary mb-1">
                 LinkedIn Password
               </label>
               <input
@@ -238,15 +238,15 @@ export default function SettingsPage() {
                 value={linkedinPassword}
                 onChange={e => setLinkedinPassword(e.target.value)}
                 placeholder="Enter new password to update"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2.5 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
               />
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
-            <h2 className="font-semibold text-gray-900">Change Password</h2>
+          <div className="bg-surface rounded-2xl border border-stroke p-6 space-y-4">
+            <h2 className="font-semibold text-text-primary">Change Password</h2>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-text-primary mb-1">
                 Current Password
               </label>
               <input
@@ -254,11 +254,11 @@ export default function SettingsPage() {
                 value={currentPassword}
                 onChange={e => setCurrentPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2.5 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-text-primary mb-1">
                 New Password
               </label>
               <input
@@ -266,15 +266,15 @@ export default function SettingsPage() {
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
                 placeholder="Min 8 characters"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2.5 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
               />
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
-            <h2 className="font-semibold text-gray-900">API Server</h2>
+          <div className="bg-surface rounded-2xl border border-stroke p-6 space-y-4">
+            <h2 className="font-semibold text-text-primary">API Server</h2>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-text-primary mb-1">
                 API Server URL
               </label>
               <input
@@ -282,9 +282,9 @@ export default function SettingsPage() {
                 value={apiUrl}
                 onChange={e => setApiUrl(e.target.value)}
                 placeholder="http://localhost:5050"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2.5 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-muted mt-1">
                 URL of your PostFlow API server
               </p>
             </div>
@@ -294,7 +294,7 @@ export default function SettingsPage() {
                 showMessage(ok ? 'success' : 'error',
                   ok ? 'Connection successful' : 'Connection failed')
               }}
-              className="w-full py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="w-full py-2 border border-stroke rounded-lg text-sm font-medium text-text-primary hover:bg-bg"
             >
               Test Connection
             </button>
@@ -303,7 +303,7 @@ export default function SettingsPage() {
           <button
             onClick={saveAccountSettings}
             disabled={saving}
-            className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            className="w-full py-3 accent-gradient text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-50 transition-colors"
           >
             {saving ? 'Saving...' : 'Save Account Settings'}
           </button>
@@ -313,8 +313,8 @@ export default function SettingsPage() {
       {/* Content Profile Tab */}
       {activeTab === 'content' && (
         <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
-            <h2 className="font-semibold text-gray-900">Your Niche</h2>
+          <div className="bg-surface rounded-2xl border border-stroke p-6 space-y-4">
+            <h2 className="font-semibold text-text-primary">Your Niche</h2>
             <div className="grid grid-cols-2 gap-2">
               {Object.entries(availableNiches).map(([key, val]: [string, any]) => (
                 <button
@@ -325,8 +325,8 @@ export default function SettingsPage() {
                   }}
                   className={`p-3 rounded-xl border-2 text-left text-sm transition-all ${
                     niche === key
-                      ? 'border-blue-600 bg-blue-50 text-blue-900'
-                      : 'border-gray-200 text-gray-700 hover:border-gray-300'
+                      ? 'border-blue-600 bg-accent/5 text-blue-900'
+                      : 'border-stroke text-text-primary hover:border-stroke'
                   }`}
                 >
                   {val.label}
@@ -335,32 +335,32 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
-            <h2 className="font-semibold text-gray-900">Professional Info</h2>
+          <div className="bg-surface rounded-2xl border border-stroke p-6 space-y-4">
+            <h2 className="font-semibold text-text-primary">Professional Info</h2>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Job Title</label>
+                <label className="block text-sm font-medium text-text-primary mb-1">Job Title</label>
                 <input
                   type="text"
                   value={jobTitle}
                   onChange={e => setJobTitle(e.target.value)}
                   placeholder="e.g. HR Director"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Company</label>
+                <label className="block text-sm font-medium text-text-primary mb-1">Company</label>
                 <input
                   type="text"
                   value={companyName}
                   onChange={e => setCompanyName(e.target.value)}
                   placeholder="e.g. Acme Corp"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-text-primary mb-1">
                 Years of Experience
               </label>
               <input
@@ -369,19 +369,19 @@ export default function SettingsPage() {
                 onChange={e => setYearsExp(parseInt(e.target.value) || 1)}
                 min="1"
                 max="50"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
               />
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
-            <h2 className="font-semibold text-gray-900">Topic Pillars</h2>
-            <p className="text-xs text-gray-500 -mt-2">Topics the AI rotates between when generating posts</p>
+          <div className="bg-surface rounded-2xl border border-stroke p-6 space-y-4">
+            <h2 className="font-semibold text-text-primary">Topic Pillars</h2>
+            <p className="text-xs text-muted -mt-2">Topics the AI rotates between when generating posts</p>
             <div className="flex flex-wrap gap-2">
               {pillars.map(p => (
                 <span key={p} className="flex items-center gap-1 bg-blue-100 text-blue-800 text-sm px-3 py-1.5 rounded-full">
                   {p}
-                  <button onClick={() => removePillar(p)} className="text-blue-500 hover:text-blue-800 ml-1 font-bold">×</button>
+                  <button onClick={() => removePillar(p)} className="text-accent hover:text-accent-light ml-1 font-bold">×</button>
                 </span>
               ))}
             </div>
@@ -392,63 +392,63 @@ export default function SettingsPage() {
                 onChange={e => setNewPillar(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addPillar()}
                 placeholder="Add a topic..."
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 px-3 py-2 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
               />
               <button
                 onClick={addPillar}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                className="px-4 py-2 accent-gradient text-white rounded-lg text-sm font-medium hover:opacity-90"
               >
                 Add
               </button>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
-            <h2 className="font-semibold text-gray-900">Voice & Style</h2>
+          <div className="bg-surface rounded-2xl border border-stroke p-6 space-y-4">
+            <h2 className="font-semibold text-text-primary">Voice & Style</h2>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Your Tone</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">Your Tone</label>
               <input
                 type="text"
                 value={tone}
                 onChange={e => setTone(e.target.value)}
                 placeholder="e.g. Empathetic, data-driven, direct"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Target Audience</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">Target Audience</label>
               <input
                 type="text"
                 value={targetAudience}
                 onChange={e => setTargetAudience(e.target.value)}
                 placeholder="e.g. HR managers, startup founders"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Writing Style</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">Writing Style</label>
               <input
                 type="text"
                 value={writingStyle}
                 onChange={e => setWritingStyle(e.target.value)}
                 placeholder="e.g. Story-driven with actionable insights"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Unique Angle</label>
+              <label className="block text-sm font-medium text-text-primary mb-1">Unique Angle</label>
               <input
                 type="text"
                 value={uniqueAngle}
                 onChange={e => setUniqueAngle(e.target.value)}
                 placeholder="e.g. Bridges people strategy with business results"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
               />
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
-            <h2 className="font-semibold text-gray-900">Publishing Schedule</h2>
+          <div className="bg-surface rounded-2xl border border-stroke p-6 space-y-4">
+            <h2 className="font-semibold text-text-primary">Publishing Schedule</h2>
             <div className="grid grid-cols-2 gap-2">
               {[
                 { time: '09:00', label: '9:00 AM' },
@@ -461,8 +461,8 @@ export default function SettingsPage() {
                   onClick={() => toggleSlot(time)}
                   className={`py-2.5 rounded-xl border-2 text-sm font-medium transition-all ${
                     publishingSlots.includes(time)
-                      ? 'border-blue-600 bg-blue-50 text-blue-900'
-                      : 'border-gray-200 text-gray-700 hover:border-gray-300'
+                      ? 'border-blue-600 bg-accent/5 text-blue-900'
+                      : 'border-stroke text-text-primary hover:border-stroke'
                   }`}
                 >
                   {label}
@@ -474,7 +474,7 @@ export default function SettingsPage() {
           <button
             onClick={saveContentProfile}
             disabled={saving}
-            className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            className="w-full py-3 accent-gradient text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-50 transition-colors"
           >
             {saving ? 'Saving...' : 'Save Content Profile'}
           </button>
