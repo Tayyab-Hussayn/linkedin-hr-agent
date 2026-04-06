@@ -945,6 +945,161 @@ def notify_clients():
     })
     return cors_response({'status': 'ok'})
 
+# ================================================================
+# WORKER ENDPOINTS — Called by queue_worker_v5.py
+# These replace direct DB access in the worker
+# ================================================================
+
+@app.route('/api/worker/due-posts', methods=['GET', 'OPTIONS'])
+def worker_get_due_posts():
+    """Get posts due for publishing right now."""
+    rows = db_query("""
+        SELECT
+            p.id,
+            p.client_id,
+            p.content,
+            p.post_format,
+            p.topic_pillar,
+            p.scheduled_for AT TIME ZONE 'Asia/Karachi' as scheduled_for_local,
+            p.scheduled_for,
+            COALESCE(p.retry_count, 0) as retry_count,
+            c.linkedin_email,
+            c.linkedin_password,
+            c.name as client_name
+        FROM posts p
+        JOIN clients c ON c.id = p.client_id
+        WHERE
+            p.approval_status = 'approved'
+            AND p.post_status = 'draft'
+            AND p.scheduled_for IS NOT NULL
+            AND p.scheduled_for <= NOW()
+            AND COALESCE(p.retry_count, 0) < %s
+        ORDER BY p.scheduled_for ASC
+        LIMIT 5
+    """, [3])
+
+    for row in rows:
+        for key in ['scheduled_for', 'scheduled_for_local']:
+            if row.get(key):
+                row[key] = str(row[key])
+
+    return cors_response({'status': 'ok', 'posts': rows})
+
+
+@app.route('/api/worker/upcoming-posts', methods=['GET', 'OPTIONS'])
+def worker_get_upcoming_posts():
+    """Get upcoming scheduled posts for display on startup."""
+    rows = db_query("""
+        SELECT
+            p.id,
+            p.topic_pillar,
+            p.scheduled_for AT TIME ZONE 'Asia/Karachi' as scheduled_local,
+            COALESCE(p.retry_count, 0) as retry_count,
+            c.name as client_name
+        FROM posts p
+        JOIN clients c ON c.id = p.client_id
+        WHERE
+            p.approval_status = 'approved'
+            AND p.post_status = 'draft'
+            AND p.scheduled_for IS NOT NULL
+            AND p.scheduled_for > NOW()
+        ORDER BY p.scheduled_for ASC
+        LIMIT 10
+    """)
+
+    for row in rows:
+        if row.get('scheduled_local'):
+            row['scheduled_local'] = str(row['scheduled_local'])
+
+    return cors_response({'status': 'ok', 'posts': rows})
+
+
+@app.route('/api/worker/mark-publishing', methods=['POST', 'OPTIONS'])
+def worker_mark_publishing():
+    """Atomically lock a post for publishing."""
+    body = request.get_json() or {}
+    post_id = body.get('post_id')
+    if not post_id:
+        return cors_response({'status': 'error', 'message': 'post_id required'}, 400)
+
+    rows = db_query("""
+        UPDATE posts
+        SET post_status = 'publishing'
+        WHERE id = %s
+            AND post_status = 'draft'
+            AND approval_status = 'approved'
+        RETURNING id
+    """, [post_id])
+
+    return cors_response({'status': 'ok', 'locked': len(rows) > 0})
+
+
+@app.route('/api/worker/mark-published', methods=['POST', 'OPTIONS'])
+def worker_mark_published():
+    """Mark a post as successfully published."""
+    body = request.get_json() or {}
+    post_id = body.get('post_id')
+    if not post_id:
+        return cors_response({'status': 'error', 'message': 'post_id required'}, 400)
+
+    db_query("""
+        UPDATE posts
+        SET post_status = 'published',
+            published_at = NOW()
+        WHERE id = %s
+    """, [post_id], fetch=False)
+
+    # Broadcast SSE event
+    broadcast_event('post_published', {'post_id': post_id})
+
+    return cors_response({'status': 'ok'})
+
+
+@app.route('/api/worker/mark-failed', methods=['POST', 'OPTIONS'])
+def worker_mark_failed():
+    """Mark a post as failed and schedule retry."""
+    body = request.get_json() or {}
+    post_id = body.get('post_id')
+    retry_count = body.get('retry_count', 0)
+
+    if not post_id:
+        return cors_response({'status': 'error', 'message': 'post_id required'}, 400)
+
+    next_retry = retry_count + 1
+    backoff_minutes = [10, 30, 60]
+
+    if next_retry >= 3:
+        # Permanent failure
+        db_query("""
+            UPDATE posts SET
+                post_status = 'failed',
+                retry_count = %s
+            WHERE id = %s
+        """, [next_retry, post_id], fetch=False)
+    else:
+        # Schedule retry with backoff
+        delay = backoff_minutes[min(retry_count, len(backoff_minutes) - 1)]
+        db_query(f"""
+            UPDATE posts SET
+                post_status = 'draft',
+                retry_count = %s,
+                scheduled_for = NOW() + INTERVAL '{delay} minutes'
+            WHERE id = %s
+        """, [next_retry, post_id], fetch=False)
+
+    return cors_response({'status': 'ok'})
+
+
+@app.route('/api/worker/cleanup', methods=['POST', 'OPTIONS'])
+def worker_cleanup():
+    """Run cleanup of old/stale posts."""
+    try:
+        db_query("SELECT cleanup_posts()", fetch=False)
+        return cors_response({'status': 'ok'})
+    except Exception as e:
+        return cors_response({'status': 'error', 'message': str(e)}, 500)
+
+
 if __name__ == '__main__':
     app.config['TIMEOUT'] = None
     app.run(host='0.0.0.0', port=5050, debug=False, threaded=True)

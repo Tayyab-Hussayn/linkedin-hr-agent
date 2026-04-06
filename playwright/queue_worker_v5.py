@@ -1,0 +1,283 @@
+"""
+queue_worker_v5.py - Qalam Scheduled Post Publisher v5
+- No direct DB connection — uses Flask API
+- API_BASE_URL configurable via environment variable
+- PLAYWRIGHT_DIR relative to script location
+- Timezone aware (client's local timezone)
+- Strict scheduled_for <= NOW() check
+- Retry with exponential backoff
+- Works in Tauri desktop app environment
+"""
+
+import time
+import json
+import sys
+import os
+import subprocess
+import requests
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+import zoneinfo
+
+# ── Configuration ─────────────────────────────────────────────
+# API_BASE_URL: Flask API server URL
+# In development: http://localhost:5050
+# In production (Tauri): https://api.byqalam.com
+API_BASE_URL = os.environ.get('QALAM_API_URL', 'http://localhost:5050')
+
+# AUTH_TOKEN: JWT token for authenticated API calls
+# Set by Tauri app after user logs in
+AUTH_TOKEN = os.environ.get('QALAM_AUTH_TOKEN', '')
+
+# PLAYWRIGHT_DIR: directory containing linkedin_actions.py
+# Uses path relative to this script file
+PLAYWRIGHT_DIR = Path(__file__).parent.resolve()
+
+# Timezone — read from environment or default to Asia/Karachi
+# Tauri app will set QALAM_TIMEZONE after user sets it
+TZ_NAME = os.environ.get('QALAM_TIMEZONE', 'Asia/Karachi')
+try:
+    LOCAL_TZ = zoneinfo.ZoneInfo(TZ_NAME)
+except Exception:
+    LOCAL_TZ = timezone.utc
+
+POLL_INTERVAL  = 60   # seconds between polls
+MAX_RETRIES    = 3
+CLEANUP_EVERY  = 1440 # cycles (~24h)
+
+# ── Logging ────────────────────────────────────────────────────
+def now_local():
+    return datetime.now(LOCAL_TZ)
+
+def log(level, msg):
+    ts = now_local().strftime('%Y-%m-%d %H:%M:%S %Z')
+    print(f"[{ts}] [{level}] {msg}", flush=True)
+
+def info(msg):  log('INFO',  msg)
+def warn(msg):  log('WARN',  msg)
+def error(msg): log('ERROR', msg)
+
+# ── API Client ─────────────────────────────────────────────────
+def api_headers():
+    headers = {'Content-Type': 'application/json'}
+    if AUTH_TOKEN:
+        headers['Authorization'] = f'Bearer {AUTH_TOKEN}'
+    return headers
+
+def api_get(path):
+    """GET request to Flask API."""
+    try:
+        r = requests.get(
+            f'{API_BASE_URL}{path}',
+            headers=api_headers(),
+            timeout=30
+        )
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.ConnectionError:
+        error(f'API unreachable: {API_BASE_URL}')
+        return None
+    except Exception as e:
+        error(f'API GET {path} failed: {e}')
+        return None
+
+def api_post(path, data=None):
+    """POST request to Flask API."""
+    try:
+        r = requests.post(
+            f'{API_BASE_URL}{path}',
+            headers=api_headers(),
+            json=data or {},
+            timeout=30
+        )
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.ConnectionError:
+        error(f'API unreachable: {API_BASE_URL}')
+        return None
+    except Exception as e:
+        error(f'API POST {path} failed: {e}')
+        return None
+
+# ── Post Operations via API ────────────────────────────────────
+def get_due_posts():
+    """Fetch posts that are due for publishing."""
+    result = api_get('/api/worker/due-posts')
+    if not result:
+        return []
+    return result.get('posts', [])
+
+def get_upcoming_posts():
+    """Fetch upcoming scheduled posts for display."""
+    result = api_get('/api/worker/upcoming-posts')
+    if not result:
+        return []
+    return result.get('posts', [])
+
+def mark_publishing(post_id):
+    """Atomically lock post for publishing."""
+    result = api_post('/api/worker/mark-publishing', {'post_id': post_id})
+    if not result:
+        return False
+    return result.get('locked', False)
+
+def update_post_published(post_id):
+    """Mark post as successfully published."""
+    api_post('/api/worker/mark-published', {'post_id': post_id})
+
+def update_post_failed(post_id, retry_count):
+    """Mark post as failed, schedule retry or permanent failure."""
+    api_post('/api/worker/mark-failed', {
+        'post_id': post_id,
+        'retry_count': retry_count
+    })
+
+def run_cleanup():
+    """Trigger cleanup of old/stale posts."""
+    api_post('/api/worker/cleanup')
+
+# ── Publishing ─────────────────────────────────────────────────
+def publish_post(post):
+    """Run Playwright to publish a post to LinkedIn."""
+    post_id     = post['id']
+    retry_count = post.get('retry_count', 0)
+    client_name = post.get('client_name', 'unknown')
+    sched_local = post.get('scheduled_for_local', post.get('scheduled_for'))
+
+    attempt_label = f"attempt {retry_count + 1}/{MAX_RETRIES}"
+    info(f"Publishing {post_id[:8]}... for {client_name} [{attempt_label}]")
+    info(f"Topic: {post.get('topic_pillar')} | Scheduled: {sched_local}")
+
+    if not mark_publishing(post_id):
+        warn(f"Post {post_id[:8]}... already locked — skipping")
+        return
+
+    linkedin_email    = post.get('linkedin_email', '')
+    linkedin_password = post.get('linkedin_password', '')
+
+    if not linkedin_email or not linkedin_password:
+        error(f"Post {post_id[:8]}... missing LinkedIn credentials")
+        update_post_failed(post_id, retry_count)
+        return
+
+    payload = {
+        "action":   "post",
+        "post_id":  post_id,
+        "content":  post['content'],
+        "email":    linkedin_email,
+        "password": linkedin_password
+    }
+
+    try:
+        python_exec = PLAYWRIGHT_DIR / 'venv' / 'bin' / 'python'
+        if not python_exec.exists():
+            # Fallback to system python
+            python_exec = 'python3'
+        else:
+            python_exec = str(python_exec)
+
+        script_path = str(PLAYWRIGHT_DIR / 'linkedin_actions.py')
+
+        result = subprocess.run(
+            [python_exec, script_path, json.dumps(payload)],
+            capture_output=True,
+            text=True,
+            timeout=None,
+            cwd=str(PLAYWRIGHT_DIR)
+        )
+
+        action_result = {}
+        for line in result.stdout.strip().split('\n'):
+            try:
+                parsed = json.loads(line)
+                if 'status' in parsed:
+                    action_result = parsed
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        if result.returncode == 0 and action_result.get('status') == 'ok':
+            update_post_published(post_id)
+            info(f"SUCCESS: {post_id[:8]}... published to LinkedIn")
+        else:
+            err_msg = action_result.get('message', result.stderr[:200])
+            error(f"FAILED: {post_id[:8]}... — {err_msg}")
+            update_post_failed(post_id, retry_count)
+
+    except subprocess.TimeoutExpired:
+        error(f"TIMEOUT: {post_id[:8]}... — Playwright timed out")
+        update_post_failed(post_id, retry_count)
+    except Exception as e:
+        error(f"Exception publishing {post_id[:8]}...: {e}")
+        update_post_failed(post_id, retry_count)
+
+# ── Main Loop ──────────────────────────────────────────────────
+def main():
+    info("=" * 55)
+    info("  Qalam Queue Worker v5")
+    info(f"  API Server    : {API_BASE_URL}")
+    info(f"  Timezone      : {TZ_NAME}")
+    info(f"  Poll interval : {POLL_INTERVAL}s")
+    info(f"  Max retries   : {MAX_RETRIES}")
+    info(f"  Playwright    : {PLAYWRIGHT_DIR}")
+    info(f"  Cleanup every : {CLEANUP_EVERY} cycles (~24h)")
+    info("=" * 55)
+
+    # Verify API is reachable before starting
+    health = api_get('/health')
+    if health:
+        info(f"API connected: {API_BASE_URL}")
+    else:
+        warn(f"API not reachable at {API_BASE_URL} — will retry on each cycle")
+
+    local_now = now_local()
+    info(f"Current local time: {local_now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+
+    upcoming = get_upcoming_posts()
+    if upcoming:
+        info(f"Upcoming scheduled posts ({len(upcoming)}):")
+        for p in upcoming:
+            retry_info = f" [retry {p.get('retry_count', 0)}]" if p.get('retry_count', 0) > 0 else ""
+            sched = p.get('scheduled_local', p.get('scheduled_for', '?'))
+            info(f"  [{p.get('topic_pillar', '?')}] at {sched}{retry_info}")
+    else:
+        info("No upcoming posts — waiting for approvals")
+
+    info("Worker ready — strict schedule enforcement")
+
+    cycle = 0
+    while True:
+        try:
+            cycle += 1
+
+            if cycle % CLEANUP_EVERY == 0:
+                info(f"[Cycle {cycle}] Running daily cleanup...")
+                run_cleanup()
+
+            due_posts = get_due_posts()
+
+            if due_posts:
+                info(f"[Cycle {cycle}] {len(due_posts)} post(s) due — publishing")
+                for post in due_posts:
+                    publish_post(post)
+            else:
+                if cycle % 5 == 0:
+                    upcoming = get_upcoming_posts()
+                    if upcoming:
+                        next_p = upcoming[0]
+                        sched = next_p.get('scheduled_local', next_p.get('scheduled_for', '?'))
+                        info(f"[Cycle {cycle}] Next: [{next_p.get('topic_pillar', '?')}] at {sched}")
+                    else:
+                        info(f"[Cycle {cycle}] Queue empty — sleeping")
+                else:
+                    info(f"[Cycle {cycle}] No posts due — sleeping {POLL_INTERVAL}s")
+
+        except KeyboardInterrupt:
+            info("Shutting down gracefully...")
+            sys.exit(0)
+        except Exception as e:
+            error(f"Main loop error: {e}")
+
+        time.sleep(POLL_INTERVAL)
+
+if __name__ == "__main__":
+    main()
