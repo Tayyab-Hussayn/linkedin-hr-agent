@@ -45,20 +45,20 @@ export default function PWAInstallPrompt() {
 
   return (
     <div className="fixed bottom-20 left-4 right-4 md:left-auto md:right-4
-                    md:w-80 bg-white rounded-2xl shadow-xl border border-gray-100
+                    md:w-80 bg-surface rounded-2xl shadow-xl border border-stroke
                     p-4 z-50 flex items-start gap-3">
       <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center
                       justify-center flex-shrink-0">
         <span className="text-white text-lg">⚡</span>
       </div>
       <div className="flex-1">
-        <p className="font-semibold text-sm text-gray-900">Install PostFlow</p>
+        <p className="font-semibold text-sm text-text-primary">Install Qalam</p>
         {isIOS ? (
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-muted mt-0.5">
             Tap the Share button then &quot;Add to Home Screen&quot;
           </p>
         ) : (
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-muted mt-0.5">
             Install for faster access and offline use
           </p>
         )}
@@ -74,7 +74,7 @@ export default function PWAInstallPrompt() {
       </div>
       <button
         onClick={() => setShowBanner(false)}
-        className="text-gray-400 hover:text-gray-600 text-lg leading-none"
+        className="text-muted hover:text-text-primary text-lg leading-none"
       >
         ×
       </button>

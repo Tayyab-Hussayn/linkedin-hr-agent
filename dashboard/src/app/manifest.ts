@@ -1,9 +1,11 @@
 import type { MetadataRoute } from 'next'
 
+export const dynamic = "force-static"
+
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'PostFlow',
-    short_name: 'PostFlow',
+    name: 'Qalam',
+    short_name: 'Qalam',
     description: 'LinkedIn content automation dashboard',
     start_url: '/',
     display: 'standalone',

@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
-import { Stats, PillarStat, Post } from '@/lib/types'
-import { useToast } from '@/hooks/useToast'
+import { Stats, PillarStat, DailyActivity, Post } from '@/lib/types'
+import { useAppContext } from '@/context/AppContext'
 import { calcHealthScore, generateInsight, getPillarColor, formatRelativeTime, getStatusLabel, cn } from '@/lib/utils'
 import { TrendingUp, AlertCircle, BarChart3 } from 'lucide-react'
 
@@ -11,9 +11,10 @@ export default function AnalyticsPage() {
   const [period, setPeriod] = useState<'week' | '30days' | 'all'>('week')
   const [stats, setStats] = useState<Stats | null>(null)
   const [pillarStats, setPillarStats] = useState<PillarStat[]>([])
+  const [dailyActivity, setDailyActivity] = useState<DailyActivity[]>([])
   const [recentPosts, setRecentPosts] = useState<Post[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const { showToast } = useToast()
+  const { showToast } = useAppContext()
 
   useEffect(() => {
     fetchAnalytics()
@@ -22,13 +23,15 @@ export default function AnalyticsPage() {
   const fetchAnalytics = async () => {
     setIsLoading(true)
     try {
-      const [statsData, pillars, history] = await Promise.all([
+      const [statsData, pillars, activity, history] = await Promise.all([
         api.getStats(),
         api.getPillarStats(),
+        api.getDailyActivity(7),
         api.getPosts('history', 10),
       ])
       setStats(statsData)
       setPillarStats(pillars)
+      setDailyActivity(activity)
       setRecentPosts(history)
     } catch (error) {
       showToast('Failed to load analytics', 'error')
@@ -77,7 +80,7 @@ export default function AnalyticsPage() {
               className={cn(
                 'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
                 period === option.value
-                  ? 'accent-gradient text-white'
+                  ? 'accent-gradient text-bg'
                   : 'text-muted hover:bg-surface-2'
               )}
             >
@@ -88,22 +91,22 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Health Banner */}
-      <div className="bg-gradient-to-br from-gray-900 to-gray-700 rounded-2xl p-6 text-white">
+      <div className="bg-surface rounded-2xl border border-stroke p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-3xl font-bold mb-1">{healthScore}</h2>
-            <p className="text-sm opacity-80">Health Score</p>
+            <h2 className="text-4xl font-bold mb-1 text-text-primary">{healthScore}</h2>
+            <p className="text-sm font-medium text-muted">Health Score</p>
           </div>
-          <div className={cn('text-right', healthLabel.color.replace('text-', 'text-'))}>
-            <div className="text-xl font-semibold">{healthLabel.label}</div>
+          <div className="text-right">
+            <div className="text-xl font-bold" style={{ color: healthScore >= 70 ? '#4a9e4a' : healthScore >= 50 ? '#C9A84C' : '#e04a4a' }}>{healthLabel.label}</div>
           </div>
         </div>
 
         {/* Progress Bar */}
-        <div className="h-3 bg-surface/20 rounded-full overflow-hidden">
+        <div className="h-3 bg-surface-2 rounded-full overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-green-400 to-blue-500 transition-all duration-1000 ease-out"
-            style={{ width: `${healthScore}%` }}
+            className="h-full transition-all duration-1000 ease-out"
+            style={{ width: `${healthScore}%`, background: 'linear-gradient(90deg, #C9A84C, #E8C97A)' }}
           />
         </div>
       </div>
@@ -151,45 +154,54 @@ export default function AnalyticsPage() {
 
         {/* Simple Bar Chart */}
         <div className="space-y-4">
-          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, index) => {
-            // Mock data - in real app would come from API
-            const generated = Math.floor(Math.random() * 5)
-            const published = Math.floor(Math.random() * 3)
-            const rejected = Math.floor(Math.random() * 2)
-            const maxValue = 5
+          {(() => {
+            const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+            const maxValue = dailyActivity.length > 0
+              ? Math.max(...dailyActivity.map(d => (d.generated || 0) + (d.published || 0) + (d.rejected || 0)), 1)
+              : 1
 
-            return (
-              <div key={day}>
-                <div className="text-xs text-muted mb-1">{day}</div>
-                <div className="flex items-center gap-1 h-8">
-                  {generated > 0 && (
-                    <div
-                      className="accent-gradient rounded h-full flex items-center justify-center text-xs text-white font-medium"
-                      style={{ width: `${(generated / maxValue) * 100}%`, minWidth: '24px' }}
-                    >
-                      {generated}
-                    </div>
-                  )}
-                  {published > 0 && (
-                    <div
-                      className="accent-gradient rounded h-full flex items-center justify-center text-xs text-white font-medium"
-                      style={{ width: `${(published / maxValue) * 100}%`, minWidth: '24px' }}
-                    >
-                      {published}
-                    </div>
-                  )}
-                  {rejected > 0 && (
-                    <div
-                      className="bg-red-500/100 rounded h-full flex items-center justify-center text-xs text-white font-medium"
-                      style={{ width: `${(rejected / maxValue) * 100}%`, minWidth: '24px' }}
-                    >
-                      {rejected}
-                    </div>
-                  )}
+            return days.map((day, index) => {
+              const dayData = dailyActivity[index]
+              const generated = dayData?.generated || 0
+              const published = dayData?.published || 0
+              const rejected = dayData?.rejected || 0
+
+              return (
+                <div key={day}>
+                  <div className="text-xs text-muted mb-1">{day}</div>
+                  <div className="flex items-center gap-1 h-8">
+                    {generated > 0 && (
+                      <div
+                        className="accent-gradient rounded h-full flex items-center justify-center text-xs text-bg font-medium"
+                        style={{ width: `${(generated / maxValue) * 100}%`, minWidth: '24px' }}
+                      >
+                        {generated}
+                      </div>
+                    )}
+                    {published > 0 && (
+                      <div
+                        className="accent-gradient rounded h-full flex items-center justify-center text-xs text-bg font-medium"
+                        style={{ width: `${(published / maxValue) * 100}%`, minWidth: '24px' }}
+                      >
+                        {published}
+                      </div>
+                    )}
+                    {rejected > 0 && (
+                      <div
+                        className="bg-red-500/100 rounded h-full flex items-center justify-center text-xs text-white font-medium"
+                        style={{ width: `${(rejected / maxValue) * 100}%`, minWidth: '24px' }}
+                      >
+                        {rejected}
+                      </div>
+                    )}
+                    {generated === 0 && published === 0 && rejected === 0 && (
+                      <div className="text-xs text-muted">—</div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })
+          })()}
         </div>
 
         {/* Legend */}
@@ -233,7 +245,7 @@ export default function AnalyticsPage() {
                     <span>•</span>
                     <span className="text-red-300">{pillar.rejected} rejected</span>
                   </div>
-                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
                     <div
                       className="h-full accent-gradient transition-all duration-500"
                       style={{ width: `${pillar.approval_rate_pct}%` }}

@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@400;500;600;700&display=swap');
-
 @import "tailwindcss";
 
 @theme {
@@ -44,8 +42,8 @@
   --color-amber-200: #8c6820;
   --color-amber-800: #C9A84C;
 
-  --font-sans: 'DM Sans', sans-serif;
-  --font-display: 'Cormorant Garamond', serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-display: Georgia, "Times New Roman", serif;
 
   --radius: 0.625rem;
   --border-radius-2xl: 1rem;
@@ -64,7 +62,7 @@
 html, body {
   background-color: #080808;
   color: #f0e5da;
-  font-family: 'DM Sans', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -112,4 +110,124 @@ html, body {
 
 .scheduled-pulse .pulse-dot {
   animation: scheduleNotify 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Tauri WebKit vertical alignment fix */
+button, input, select, textarea {
+  line-height: normal;
+}
+
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Fix all flex containers with text */
+a, span, p, div {
+  line-height: 1.5;
+}
+
+/* Input text vertical centering */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="time"] {
+  line-height: 1;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* WebKit/Tauri button alignment fix */
+button {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+input, textarea, select {
+  -webkit-appearance: none;
+  appearance: none;
+  line-height: 1.5;
+}
+
+/* ================================================
+   WEBKIT/TAURI FONT METRICS FIX
+   Fixes text floating to top in buttons, inputs, badges
+   ================================================ */
+
+/* Reset all button rendering */
+button, [role="button"] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+/* Fix icon+text alignment inside buttons */
+button svg, button span {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+/* Fix badge vertical alignment */
+.badge, [class*="rounded-full"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* Fix input text positioning */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="time"],
+input[type="search"],
+textarea {
+  -webkit-appearance: none;
+  appearance: none;
+  line-height: normal;
+}
+
+/* Fix all anchor tags used as buttons */
+a[class*="rounded"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Inter font WebKit rendering fix */
+/* Force consistent line-height across all text elements */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Specific fix for Tailwind flex buttons */
+.flex, .inline-flex {
+  align-items: center;
+}
+
+/* Correct line-height fix for WebKit button alignment */
+button {
+  line-height: 1 !important;
+  overflow: visible;
+}
+
+/* Light background contrast enforcement */
+.bg-white, [class*="bg-white"] {
+  color: #1a1a1a;
+}
+.bg-white *, [class*="bg-white"] * {
+  color: inherit;
 }

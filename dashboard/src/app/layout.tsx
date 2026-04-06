@@ -34,7 +34,7 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="PostFlow" />
+        <meta name="apple-mobile-web-app-title" content="Qalam" />
         <meta name="theme-color" content="#0071e3" />
       </head>
       <body className="bg-bg text-text-primary font-sans antialiased">

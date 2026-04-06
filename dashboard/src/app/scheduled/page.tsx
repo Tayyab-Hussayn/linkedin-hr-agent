@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
 import { Post } from '@/lib/types'
-import { useToast } from '@/hooks/useToast'
 import { useAppContext } from '@/context/AppContext'
 import { useSSE } from '@/hooks/useSSE'
 import { CalendarCheck, Clock, Trash2, Calendar } from 'lucide-react'
@@ -55,8 +54,7 @@ export default function ScheduledPage() {
   const [selectedTime, setSelectedTime] = useState('18:00')
   const [customTime, setCustomTime] = useState('')
   const [tick, setTick] = useState(0)
-  const { showToast } = useToast()
-  const { setScheduledCount } = useAppContext()
+  const { showToast, setScheduledCount } = useAppContext()
 
   useSSE({
     onPostApproved: () => {
@@ -98,7 +96,6 @@ export default function ScheduledPage() {
     const [year, month, day] = dateStr.split('-').map(Number)
     const [hour, minute] = time24h.split(':').map(Number)
     const localDate = new Date(year, month - 1, day, hour, minute, 0, 0)
-    console.log('buildScheduledISO:', dateStr, time24h, '→', localDate.toISOString())
     return localDate.toISOString()
   }
 
@@ -221,7 +218,7 @@ export default function ScheduledPage() {
           <p className="text-muted mb-6">Approve posts from the Queue to schedule them</p>
           <Link
             href="/queue"
-            className="inline-flex items-center gap-2 px-6 py-3 accent-gradient text-white rounded-xl font-medium hover:accent-gradient transition-colors"
+            className="inline-flex items-center gap-2 px-6 py-3 accent-gradient text-bg rounded-xl font-medium hover:accent-gradient transition-colors"
           >
             Go to Queue →
           </Link>
@@ -235,12 +232,7 @@ export default function ScheduledPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold mb-2">Scheduled Posts</h1>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted">{posts.length} posts waiting to publish</span>
-          <span className="px-2 py-1 bg-accent/5 text-blue-700 text-xs font-medium rounded-full border border-blue-200">
-            Auto-publishes at scheduled time
-          </span>
-        </div>
+        <span className="text-sm text-muted">{posts.length} posts waiting to publish</span>
       </div>
 
       {/* Posts List */}
@@ -259,45 +251,48 @@ export default function ScheduledPage() {
             <div
               key={post.id}
               className={cn(
-                'bg-surface rounded-2xl border border-stroke shadow-sm p-5 transition-all duration-300',
+                'bg-surface rounded-2xl border border-stroke shadow-sm p-5 transition-all duration-300 flex items-center gap-4',
                 removingIds.has(post.id) && 'opacity-0 scale-95 h-0 overflow-hidden'
               )}
             >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-3">
-                <span className={cn('px-3 py-1 text-xs font-semibold rounded-full border', pillarColor)}>
-                  {post.topic_pillar}
-                </span>
-              </div>
-
-              {/* Content Preview */}
-              <p className="text-sm text-text-primary line-clamp-3 mb-4">
-                {preview}
-              </p>
-
-              {/* Schedule Info */}
-              <div className="bg-accent/5 border border-blue-200 rounded-xl p-3 mb-4">
-                <div className="flex items-center gap-2 text-blue-900">
-                  <Clock className="w-4 h-4" />
-                  <span className="text-sm font-semibold">
-                    Scheduled: {statusText} {countdownText && `(${countdownText})`}
+              {/* Left content */}
+              <div className="flex-1 min-w-0">
+                {/* Header */}
+                <div className="mb-3">
+                  <span className={cn('px-3 py-1 text-xs font-semibold rounded-full border', pillarColor)}>
+                    {post.topic_pillar}
                   </span>
+                </div>
+
+                {/* Content Preview */}
+                <p className="text-sm text-text-primary line-clamp-2 mb-3">
+                  {preview}
+                </p>
+
+                {/* Schedule Info */}
+                <div className="bg-surface-2 border border-stroke rounded-xl p-3">
+                  <div className="flex items-center gap-2 text-text-primary">
+                    <Clock className="w-4 h-4 flex-shrink-0" />
+                    <span className="text-sm font-semibold">
+                      Scheduled: {statusText} {countdownText && `(${countdownText})`}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-2">
+              {/* Right actions - vertically centered */}
+              <div className="flex flex-col items-end gap-2 flex-shrink-0">
                 <button
                   onClick={() => handlePublishNow(post.id)}
                   disabled={publishingId === post.id}
-                  className="flex-1 px-4 py-2.5 accent-gradient text-white rounded-xl font-medium hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 accent-gradient text-bg rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed leading-none"
                 >
                   {publishingId === post.id ? 'Publishing...' : 'Publish Now'}
                 </button>
 
                 <button
                   onClick={() => handleRemove(post.id)}
-                  className="px-4 py-2.5 bg-surface-2 text-muted rounded-xl font-medium hover:bg-gray-200 transition-colors"
+                  className="p-1.5 text-muted hover:text-red-300 transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -321,7 +316,7 @@ export default function ScheduledPage() {
               className={cn(
                 'w-full px-4 py-3 rounded-xl font-medium transition-all text-left flex items-center gap-3',
                 scheduleMode === 'default'
-                  ? 'accent-gradient text-white shadow-md'
+                  ? 'accent-gradient text-bg shadow-md'
                   : 'bg-surface-2 text-text-primary hover:bg-gray-200'
               )}
             >
@@ -344,7 +339,7 @@ export default function ScheduledPage() {
               className={cn(
                 'w-full px-4 py-3 rounded-xl font-medium transition-all text-left flex items-center gap-3',
                 scheduleMode === 'custom'
-                  ? 'accent-gradient text-white shadow-md'
+                  ? 'accent-gradient text-bg shadow-md'
                   : 'bg-surface-2 text-text-primary hover:bg-gray-200'
               )}
             >
@@ -462,7 +457,7 @@ export default function ScheduledPage() {
             </button>
             <button
               onClick={handleSaveReschedule}
-              className="flex-1 px-4 py-3 accent-gradient text-white rounded-xl font-medium hover:accent-gradient transition-colors flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-3 accent-gradient text-bg rounded-xl font-medium hover:accent-gradient transition-colors flex items-center justify-center gap-2"
             >
               <Clock className="w-4 h-4" />
               Reschedule

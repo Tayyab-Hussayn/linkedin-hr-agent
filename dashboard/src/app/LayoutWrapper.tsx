@@ -6,7 +6,6 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { Header } from '@/components/layout/Header'
 import { MobileNav } from '@/components/layout/MobileNav'
 import { ToastContainer } from '@/components/ui/Toast'
-import { useToast } from '@/hooks/useToast'
 import { useAppContext } from '@/context/AppContext'
 import { useSSE } from '@/hooks/useSSE'
 import { api } from '@/lib/api'
@@ -17,8 +16,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [pendingCount, setPendingCount] = useState(0)
   const [publishedCount, setPublishedCount] = useState(0)
-  const { toasts, showToast, dismissToast } = useToast()
-  const { setScheduledCount } = useAppContext()
+  const { toasts, dismissToast, setScheduledCount } = useAppContext()
 
   // Pages that don't need auth
   const publicPages = ['/login', '/register', '/onboarding']

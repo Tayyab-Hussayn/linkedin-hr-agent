@@ -58,7 +58,6 @@ export function PostCard({
     const [year, month, day] = dateStr.split('-').map(Number)
     const [hour, minute] = time24h.split(':').map(Number)
     const localDate = new Date(year, month - 1, day, hour, minute, 0, 0)
-    console.log('buildScheduledISO:', dateStr, time24h, '→', localDate.toISOString())
     return localDate.toISOString()
   }
 
@@ -114,15 +113,6 @@ export function PostCard({
         const timeStr = selectedTime === 'custom' ? customTime : selectedTime
         const dateStr = getDateStr(selectedDate)
         const isoStr = buildScheduledISO(dateStr, timeStr)
-
-        console.log('Schedule debug:', {
-          selectedDate,
-          selectedTime,
-          customTime,
-          timeStr,
-          dateStr,
-          isoStr
-        })
 
         await onApprove(post.id, isoStr)
       }
@@ -237,14 +227,14 @@ export function PostCard({
           <button
             onClick={handleApproveClick}
             disabled={isApproving || isRejecting}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 accent-gradient text-bg rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 accent-gradient text-bg rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed leading-none"
           >
             {isApproving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
             ) : (
-              <ThumbsUp className="w-4 h-4" />
+              <ThumbsUp className="w-4 h-4 flex-shrink-0" />
             )}
-            Approve
+            <span>Approve</span>
           </button>
 
           <button
@@ -258,14 +248,14 @@ export function PostCard({
           <button
             onClick={handleReject}
             disabled={isApproving || isRejecting}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border border-stroke text-muted hover:border-red-500/50 hover:text-red-300 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-stroke text-muted hover:border-red-500/50 hover:text-red-300 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed leading-none"
           >
             {isRejecting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
             ) : (
-              <ThumbsDown className="w-4 h-4" />
+              <ThumbsDown className="w-4 h-4 flex-shrink-0" />
             )}
-            Reject
+            <span>Reject</span>
           </button>
         </div>
       )}

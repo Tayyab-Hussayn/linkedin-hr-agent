@@ -33,16 +33,24 @@ export function Sidebar({ pendingCount = 0, publishedCount = 0 }: SidebarProps) 
   ]
 
   return (
-    <aside className="hidden md:flex fixed left-0 top-0 h-screen w-[220px] bg-surface border-r border-stroke flex-col z-40">
-      {/* Logo */}
-      <div className="px-5 py-5 border-b border-stroke">
-        <span className="font-display italic text-xl accent-gradient-text font-semibold">
-          Qalam
-        </span>
+    <aside className="hidden md:flex flex-col fixed left-0 top-0 h-full w-[220px] bg-surface border-r border-stroke z-40">
+      {/* Logo — top */}
+      <div className="px-5 py-5 border-b border-stroke/50 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg accent-gradient flex items-center justify-center">
+            <span className="text-bg text-xs font-bold">Q</span>
+          </div>
+          <span className="font-display italic text-xl accent-gradient-text font-semibold">
+            Qalam
+          </span>
+        </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      {/* Navigation — takes all remaining space */}
+      <nav className="flex-1 overflow-y-auto py-4 space-y-0.5">
+        <p className="text-xs text-muted/50 uppercase tracking-widest pl-5 mb-2 text-left">
+          Navigation
+        </p>
         {navItems.map((item) => {
           const isActive = pathname === item.href
           const Icon = item.icon
@@ -52,17 +60,17 @@ export function Sidebar({ pendingCount = 0, publishedCount = 0 }: SidebarProps) 
               key={item.href}
               href={item.href}
               className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all relative',
+                'flex items-center gap-3 w-full pl-5 pr-3 py-2.5 text-sm font-medium transition-all duration-150 relative justify-start',
                 isActive
-                  ? 'bg-surface-2 text-accent border-l-2 border-accent pl-[10px]'
-                  : 'text-muted hover:bg-surface-2 hover:text-text-primary',
+                  ? 'bg-accent/10 text-accent border-l-2 border-accent'
+                  : 'text-muted hover:bg-surface-2 hover:text-text-primary border-l-2 border-transparent',
                 item.isPulsing && 'scheduled-pulse'
               )}
             >
               <Icon className="w-4 h-4 flex-shrink-0" />
               <span>{item.label}</span>
               {item.badge !== undefined && item.badge > 0 && (
-                <span className="ml-auto bg-accent text-bg text-xs font-bold px-1.5 py-0.5 rounded-full">
+                <span className="ml-auto flex items-center justify-center bg-accent text-bg text-xs font-bold min-w-[20px] h-5 px-1.5 rounded-full leading-none">
                   {item.badge}
                 </span>
               )}
@@ -77,17 +85,22 @@ export function Sidebar({ pendingCount = 0, publishedCount = 0 }: SidebarProps) 
         })}
       </nav>
 
-      {/* User section */}
-      <div className="px-3 py-4 border-t border-stroke space-y-2">
+      {/* User profile — always at bottom */}
+      <div className="flex-shrink-0 py-4 border-t border-stroke/50 space-y-1">
         {mounted && user && (
-          <div className="px-3 py-2">
-            <p className="text-sm font-medium text-text-primary truncate">{user.name}</p>
-            <p className="text-xs text-muted">Free Plan</p>
+          <div className="pl-5 pr-3 py-2 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
+              <span className="text-accent text-xs font-bold">{user.name?.charAt(0)?.toUpperCase()}</span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-text-primary truncate">{user.name}</p>
+              <p className="text-xs text-muted">Free Plan</p>
+            </div>
           </div>
         )}
         <button
           onClick={() => auth.logout()}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted hover:text-red-300 hover:bg-red-500/5 rounded-lg transition-colors"
+          className="w-full flex items-center justify-start gap-2 pl-5 pr-3 py-2 text-sm text-muted hover:text-red-300 hover:bg-red-500/5 transition-colors"
         >
           <LogOut className="w-4 h-4" />
           Sign out

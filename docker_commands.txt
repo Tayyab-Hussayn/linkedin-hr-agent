@@ -39,15 +39,18 @@ cloudflared tunnel --url http://localhost:5678
   const s = document.createElement('style');
   s.textContent = `* { animation: none !important; transition: none !important; }`;
   document.head.appendChild(s);
+
   // 2. Strip syntax highlighting (safe - just replaces text)
   document.querySelectorAll('pre code').forEach(pre => {
     pre.textContent = pre.textContent;
   });
+
   // 3. ONLY remove conversation children - nothing else
   const conv = document.querySelector('div.flex-1.flex.flex-col.px-4.max-w-3xl.mx-auto.w-full.pt-1');
   if (conv) {
     const children = Array.from(conv.children);
-    console.log("Total children:", children.length);    
+    console.log("Total children:", children.length);
+    
     // Keep last 20, remove the rest one by one safely
     children.slice(0, -20).forEach(el => {
       try {
@@ -59,5 +62,6 @@ cloudflared tunnel --url http://localhost:5678
       }
     });
   }
+
   console.log("✅ Done. Remaining nodes:", document.querySelectorAll('*').length);
 })();

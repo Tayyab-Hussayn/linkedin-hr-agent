@@ -8,7 +8,6 @@ import { StatStrip } from '@/components/ui/StatStrip'
 import { SkeletonCard } from '@/components/ui/SkeletonCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Sheet } from '@/components/ui/Sheet'
-import { useToast } from '@/hooks/useToast'
 import { useAppContext } from '@/context/AppContext'
 import { useSSE } from '@/hooks/useSSE'
 import Link from 'next/link'
@@ -41,8 +40,7 @@ export default function QueuePage() {
   const [editingPost, setEditingPost] = useState<Post | null>(null)
   const [editedContent, setEditedContent] = useState('')
   const [isSaving, setIsSaving] = useState(false)
-  const { showToast } = useToast()
-  const { triggerScheduledPulse, setScheduledCount } = useAppContext()
+  const { showToast, triggerScheduledPulse, setScheduledCount } = useAppContext()
 
   useSSE({
     onNewPosts: () => {
@@ -315,7 +313,7 @@ export default function QueuePage() {
           <button
             onClick={handleSaveEdit}
             disabled={isSaving || !editedContent.trim()}
-            className="w-full px-4 py-3 accent-gradient text-white rounded-lg font-medium hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full px-4 py-3 accent-gradient text-bg rounded-lg font-medium hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSaving ? 'Saving...' : 'Save & Approve'}
           </button>

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
 import { Post, Stats } from '@/lib/types'
-import { useToast } from '@/hooks/useToast'
+import { useAppContext } from '@/context/AppContext'
 import { getNextGenerationTime, formatRelativeTime, getPillarColor, cn } from '@/lib/utils'
 import { Sparkles, Clock, Loader2, TrendingUp } from 'lucide-react'
 
@@ -13,32 +13,25 @@ export default function ContentPage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [mounted, setMounted] = useState(false)
-  const { showToast } = useToast()
+  const [autoGenEnabled, setAutoGenEnabled] = useState(true)
+  const { showToast } = useAppContext()
 
   useEffect(() => {
     setMounted(true)
-  }, [])
-
-  useEffect(() => {
     fetchData()
     fetchStats()
 
-    // Auto-refresh stats every 30 seconds
     const interval = setInterval(fetchStats, 30000)
-    return () => clearInterval(interval)
-  }, [])
 
-  useEffect(() => {
-    // Refresh when page becomes visible
     const handleVisibility = () => {
-      if (!document.hidden) {
-        fetchStats()
-        fetchData()
-      }
+      if (!document.hidden) fetchStats()
     }
-
     document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
   }, [])
 
   const fetchStats = async () => {
@@ -165,40 +158,83 @@ export default function ContentPage() {
           </div>
         </div>
 
-        {/* Status */}
-        <div className="flex items-center gap-2 mb-4 p-3 bg-green-50 rounded-lg border border-green-200">
-          <div className="w-2 h-2 accent-gradient rounded-full animate-pulse" />
-          <span className="text-sm font-medium text-green-700">Auto-generation is ON</span>
-        </div>
-
-        {/* Countdown */}
-        <div className="flex items-center gap-2 mb-4 text-sm text-muted">
-          <Clock className="w-4 h-4" />
-          <span>Next run in <span className="font-semibold text-accent">{hours}h {minutes}m</span></span>
-        </div>
-
-        {/* Daily Limit Info */}
-        <div className="mb-4 p-3 bg-bg rounded-lg">
-          <div className="flex items-center justify-between text-sm mb-1">
-            <span className="text-muted">Generated today</span>
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-text-primary">
-                {mounted && stats ? `${stats.generated_today} / ${stats.daily_post_limit}` : '...'}
-              </span>
-              {mounted && stats && (
-                <span className="text-xs text-muted">{stats.plan_name} Plan</span>
-              )}
+        {/* Auto-generation Toggle */}
+        <div className="bg-surface border border-stroke rounded-2xl p-4 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-text-primary">
+                Auto-generation
+              </p>
+              <p className="text-xs text-muted mt-0.5">
+                {autoGenEnabled
+                  ? 'AI generates posts automatically on schedule'
+                  : 'Paused — no new posts will be generated'}
+              </p>
             </div>
+
+            {/* Toggle switch */}
+            <button
+              onClick={() => setAutoGenEnabled(!autoGenEnabled)}
+              className="relative flex-shrink-0 cursor-pointer rounded-full focus:outline-none"
+              style={{
+                width: '48px',
+                height: '24px',
+                backgroundColor: autoGenEnabled ? '#C9A84C' : '#212121',
+                transition: 'background-color 200ms',
+              }}
+              role="switch"
+              aria-checked={autoGenEnabled}
+            >
+              <span
+                className="pointer-events-none absolute rounded-full bg-white shadow-lg"
+                style={{
+                  width: '20px',
+                  height: '20px',
+                  top: '2px',
+                  left: autoGenEnabled ? '26px' : '2px',
+                  transition: 'left 200ms',
+                }}
+              />
+            </button>
           </div>
-          <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+        </div>
+
+        {/* Countdown - only show when enabled */}
+        {autoGenEnabled && (
+          <div className="flex items-center gap-2 mb-4 text-sm text-muted">
+            <Clock className="w-4 h-4" />
+            <span>Next run in <span className="font-semibold text-accent">{hours}h {minutes}m</span></span>
+          </div>
+        )}
+
+        {/* Paused message - only show when disabled */}
+        {!autoGenEnabled && (
+          <p className="text-xs text-muted/60 mb-4 italic">
+            Auto-generation paused
+          </p>
+        )}
+
+        {/* Generated today card */}
+        <div className="bg-surface border border-stroke rounded-xl p-4 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-muted">Generated today</span>
+            <span className="text-sm font-medium text-text-primary">
+              {mounted && stats ? `${stats.generated_today} / ${stats.daily_post_limit}` : '...'}
+              {mounted && stats && (
+                <span className="text-xs text-muted ml-1">{stats.plan_name} Plan</span>
+              )}
+            </span>
+          </div>
+          {/* Progress bar */}
+          <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
             <div
               className={cn(
-                "h-full transition-all duration-300",
-                isLimitReached ? "bg-red-500/100" : "accent-gradient"
+                "h-full rounded-full transition-all duration-300",
+                isLimitReached ? "bg-red-500" : "accent-gradient"
               )}
               style={{
                 width: mounted && stats
-                  ? `${Math.min(progress, 100)}%`
+                  ? `${Math.min((stats.generated_today / stats.daily_post_limit) * 100, 100)}%`
                   : '0%'
               }}
             />
@@ -221,7 +257,7 @@ export default function ContentPage() {
         <button
           onClick={handleGenerateNow}
           disabled={isGenerating || !stats?.can_generate_now || (mounted && isLimitReached)}
-          className="w-full px-4 py-3 accent-gradient text-white rounded-xl font-medium hover:accent-gradient transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full px-4 py-3 accent-gradient text-bg rounded-xl font-medium hover:accent-gradient transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {isGenerating ? (
             <>
@@ -272,7 +308,7 @@ export default function ContentPage() {
                     </div>
                     <button
                       onClick={() => handlePublishNow(post.id)}
-                      className="px-3 py-1.5 accent-gradient text-white text-xs font-medium rounded-lg hover:accent-gradient transition-colors whitespace-nowrap"
+                      className="px-3 py-1.5 accent-gradient text-bg text-xs font-medium rounded-lg hover:accent-gradient transition-colors whitespace-nowrap"
                     >
                       Publish Now
                     </button>

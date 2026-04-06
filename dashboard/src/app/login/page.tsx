@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { Eye, EyeOff } from 'lucide-react'
 import { api } from '@/lib/api'
 import { auth } from '@/lib/auth'
 
@@ -10,6 +11,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
     if (auth.isLoggedIn()) router.replace('/queue')
@@ -84,20 +86,32 @@ export default function LoginPage() {
               onChange={e => setEmail(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleLogin()}
               placeholder="you@company.com"
-              className="w-full px-4 py-2.5 bg-surface-2 border border-stroke text-text-primary placeholder:text-muted rounded-lg text-sm focus:outline-none focus:border-accent"
+              className="w-full text-sm text-text-primary placeholder:text-muted bg-surface-2 border border-stroke rounded-lg focus:outline-none focus:border-accent"
+              style={{ padding: '12px 16px', height: '44px' }}
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-text-primary mb-1">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleLogin()}
-              placeholder="••••••••"
-              className="w-full px-4 py-2.5 bg-surface-2 border border-stroke text-text-primary placeholder:text-muted rounded-lg text-sm focus:outline-none focus:border-accent"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                placeholder="••••••••"
+                className="w-full text-sm text-text-primary placeholder:text-muted bg-surface-2 border border-stroke rounded-lg focus:outline-none focus:border-accent"
+                style={{ padding: '12px 16px', paddingRight: '44px', height: '44px' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-text-primary transition-colors"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           <button

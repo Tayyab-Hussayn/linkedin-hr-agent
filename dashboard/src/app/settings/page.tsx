@@ -303,7 +303,7 @@ export default function SettingsPage() {
           <button
             onClick={saveAccountSettings}
             disabled={saving}
-            className="w-full py-3 accent-gradient text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-50 transition-colors"
+            className="w-full py-3 accent-gradient text-bg rounded-xl font-medium hover:opacity-90 disabled:opacity-50 transition-colors"
           >
             {saving ? 'Saving...' : 'Save Account Settings'}
           </button>
@@ -396,7 +396,7 @@ export default function SettingsPage() {
               />
               <button
                 onClick={addPillar}
-                className="px-4 py-2 accent-gradient text-white rounded-lg text-sm font-medium hover:opacity-90"
+                className="px-4 py-2 accent-gradient text-bg rounded-lg text-sm font-medium hover:opacity-90"
               >
                 Add
               </button>
@@ -474,7 +474,7 @@ export default function SettingsPage() {
           <button
             onClick={saveContentProfile}
             disabled={saving}
-            className="w-full py-3 accent-gradient text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-50 transition-colors"
+            className="w-full py-3 accent-gradient text-bg rounded-xl font-medium hover:opacity-90 disabled:opacity-50 transition-colors"
           >
             {saving ? 'Saving...' : 'Save Content Profile'}
           </button>
