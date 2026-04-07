@@ -28,7 +28,14 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["deb", "rpm"],
+    "externalBin": [
+      "binaries/qalam-worker"
+    ],
+    "resources": {
+      "resources/linkedin_actions.py": "linkedin_actions.py",
+      "resources/humanizer.py": "humanizer.py"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

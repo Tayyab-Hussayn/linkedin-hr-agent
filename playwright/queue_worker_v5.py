@@ -30,8 +30,24 @@ API_BASE_URL = os.environ.get('QALAM_API_URL', 'http://localhost:5050')
 AUTH_TOKEN = os.environ.get('QALAM_AUTH_TOKEN', '')
 
 # PLAYWRIGHT_DIR: directory containing linkedin_actions.py
-# Uses path relative to this script file
-PLAYWRIGHT_DIR = Path(__file__).parent.resolve()
+# When running as PyInstaller bundle:
+# - sys.frozen is True
+# - sys.executable points to the bundled exe
+# - QALAM_RESOURCES_DIR env var set by Tauri points
+#   to the directory containing linkedin_actions.py
+if getattr(sys, 'frozen', False):
+    # Running as PyInstaller bundle
+    resources_dir = os.environ.get('QALAM_RESOURCES_DIR', '')
+    if resources_dir:
+        PLAYWRIGHT_DIR = Path(resources_dir)
+    else:
+        # Fallback: same directory as the executable
+        PLAYWRIGHT_DIR = Path(sys.executable).parent
+else:
+    # Running as regular Python script (development)
+    PLAYWRIGHT_DIR = Path(__file__).parent.resolve()
+
+print(f"[CONFIG] PLAYWRIGHT_DIR: {PLAYWRIGHT_DIR}", flush=True)
 
 # Timezone — read from environment or default to Asia/Karachi
 # Tauri app will set QALAM_TIMEZONE after user sets it
@@ -169,22 +185,67 @@ def publish_post(post):
     }
 
     try:
-        python_exec = PLAYWRIGHT_DIR / 'venv' / 'bin' / 'python'
-        if not python_exec.exists():
-            # Fallback to system python
-            python_exec = 'python3'
-        else:
-            python_exec = str(python_exec)
+        # Find correct python executable
+        if getattr(sys, 'frozen', False):
+            # Running as PyInstaller bundle
+            # sys.executable is the bundle — NOT Python
+            python_exec = None
 
-        script_path = str(PLAYWRIGHT_DIR / 'linkedin_actions.py')
+            # Try QALAM_PYTHON env var first
+            qalam_python = os.environ.get('QALAM_PYTHON', '')
+            if qalam_python and Path(qalam_python).exists():
+                python_exec = Path(qalam_python)
+
+            if not python_exec:
+                # Try common Python locations
+                for candidate in [
+                    '/usr/bin/python3',
+                    '/usr/local/bin/python3',
+                    '/usr/bin/python',
+                    str(Path.home() / '.pyenv/versions/3.11.9/bin/python3'),
+                    str(Path.home() / '.pyenv/shims/python3'),
+                ]:
+                    if Path(candidate).exists():
+                        python_exec = Path(candidate)
+                        break
+
+            if not python_exec:
+                # Last resort — use 'python3' from PATH
+                import shutil
+                found = shutil.which('python3') or shutil.which('python')
+                if found:
+                    python_exec = Path(found)
+
+            if not python_exec:
+                error(f"Cannot find Python interpreter. Set QALAM_PYTHON env var.")
+                update_post_failed(post_id, retry_count)
+                return
+        else:
+            # Development mode — use venv python
+            python_venv = PLAYWRIGHT_DIR / 'venv' / 'bin' / 'python'
+            python_exec = python_venv if python_venv.exists() else Path(sys.executable)
+
+        print(f"[DEBUG] Using Python: {python_exec}", flush=True)
+
+        python_exec_path = str(python_exec)
+        actions_path = str(PLAYWRIGHT_DIR / 'linkedin_actions.py')
+
+        print(f"[DEBUG] Python: {python_exec_path}", flush=True)
+        print(f"[DEBUG] Script: {actions_path}", flush=True)
+        print(f"[DEBUG] Script exists: {Path(actions_path).exists()}", flush=True)
+        print(f"[DEBUG] Python exists: {Path(python_exec_path).exists()}", flush=True)
 
         result = subprocess.run(
-            [python_exec, script_path, json.dumps(payload)],
+            [python_exec_path, actions_path, json.dumps(payload)],
             capture_output=True,
             text=True,
-            timeout=None,
+            timeout=120,
             cwd=str(PLAYWRIGHT_DIR)
         )
+
+        print(f"[DEBUG] Return code: {result.returncode}", flush=True)
+        print(f"[DEBUG] Stdout: {result.stdout[:500]}", flush=True)
+        print(f"[DEBUG] Stderr: {result.stderr[:500]}", flush=True)
 
         action_result = {}
         for line in result.stdout.strip().split('\n'):
@@ -192,22 +253,25 @@ def publish_post(post):
                 parsed = json.loads(line)
                 if 'status' in parsed:
                     action_result = parsed
-            except (json.JSONDecodeError, ValueError):
+            except Exception:
                 pass
 
         if result.returncode == 0 and action_result.get('status') == 'ok':
             update_post_published(post_id)
             info(f"SUCCESS: {post_id[:8]}... published to LinkedIn")
         else:
-            err_msg = action_result.get('message', result.stderr[:200])
+            err_msg = action_result.get('message',
+                result.stderr[:200] if result.stderr else 'Unknown error')
             error(f"FAILED: {post_id[:8]}... — {err_msg}")
             update_post_failed(post_id, retry_count)
 
     except subprocess.TimeoutExpired:
-        error(f"TIMEOUT: {post_id[:8]}... — Playwright timed out")
+        error(f"TIMEOUT: {post_id[:8]}... exceeded 120 seconds")
         update_post_failed(post_id, retry_count)
     except Exception as e:
-        error(f"Exception publishing {post_id[:8]}...: {e}")
+        error(f"EXCEPTION: {post_id[:8]}... — {e}")
+        import traceback
+        print(f"[DEBUG] Traceback: {traceback.format_exc()}", flush=True)
         update_post_failed(post_id, retry_count)
 
 # ── Main Loop ──────────────────────────────────────────────────
