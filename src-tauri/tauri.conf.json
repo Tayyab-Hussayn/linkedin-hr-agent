@@ -28,7 +28,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "rpm"],
+    "targets": ["deb", "rpm", "nsis"],
     "externalBin": [
       "binaries/qalam-worker"
     ],

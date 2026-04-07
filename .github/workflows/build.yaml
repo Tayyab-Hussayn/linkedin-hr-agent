@@ -1,4 +1,4 @@
-name: Build Tauri App
+name: Build & Release Qalam
 
 on:
   push:
@@ -6,44 +6,121 @@ on:
       - 'v*'
 
 jobs:
-  build-tauri:
+  build:
     strategy:
+      fail-fast: false   # if Windows fails, Linux still finishes (and vice versa)
       matrix:
-        platform: [ubuntu-22.04, windows-latest]
+        include:
+          - platform: ubuntu-22.04
+            bundles: deb,rpm
+
+          - platform: windows-latest
+            bundles: nsis
 
     runs-on: ${{ matrix.platform }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Node.js
+      # ── Build qalam-worker sidecar ───────────────────────────────
+      # Must happen before Tauri build — binary must exist in src-tauri/binaries/
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build qalam-worker sidecar (Linux)
+        if: runner.os == 'Linux'
+        working-directory: playwright
+        run: |
+          pip install pyinstaller requests urllib3 certifi charset-normalizer idna
+          pyinstaller --onefile --name qalam-worker \
+            --hidden-import zoneinfo \
+            --hidden-import requests \
+            --hidden-import urllib3 \
+            --hidden-import charset_normalizer \
+            --hidden-import certifi \
+            --hidden-import idna \
+            --collect-all requests \
+            queue_worker_v5.py
+          cp dist/qalam-worker ../src-tauri/binaries/qalam-worker-x86_64-unknown-linux-gnu
+
+      - name: Build qalam-worker sidecar (Windows)
+        if: runner.os == 'Windows'
+        working-directory: playwright
+        shell: pwsh
+        run: |
+          pip install pyinstaller requests urllib3 certifi charset-normalizer idna
+          pyinstaller --onefile --name qalam-worker `
+            --hidden-import zoneinfo `
+            --hidden-import requests `
+            --hidden-import urllib3 `
+            --hidden-import charset_normalizer `
+            --hidden-import certifi `
+            --hidden-import idna `
+            --collect-all requests `
+            queue_worker_v5.py
+          Copy-Item dist\qalam-worker.exe ..\src-tauri\binaries\qalam-worker-x86_64-pc-windows-msvc.exe
+
+      # ── Rust & Node setup ────────────────────────────────────────
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
+          cache-dependency-path: dashboard/package-lock.json
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      # ── Platform-specific system dependencies ────────────────────
 
-      - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            rpm
 
-      - name: Install frontend dependencies
-        run: npm install
+      # ── Frontend build ───────────────────────────────────────────
+      # tauri.conf.json beforeBuildCommand runs "cd ../dashboard && npm run build"
+      # so we just need deps installed — the Next.js build runs automatically
 
-      - name: Build Tauri app
+      - name: Install dashboard dependencies
+        working-directory: dashboard
+        run: npm ci
+
+      # ── Tauri build & GitHub Release upload ──────────────────────
+
+      - name: Build Tauri app and publish release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Qalam ${{ github.ref_name }}'
-          releaseBody: 'Download the installer for your platform below.'
+          releaseBody: |
+            ## Qalam ${{ github.ref_name }}
+
+            | Platform | File | Notes |
+            |----------|------|-------|
+            | Linux (Debian/Ubuntu) | `.deb` | Recommended for Ubuntu, Pop!_OS, Mint |
+            | Linux (Fedora/RHEL/Arch) | `.rpm` | Recommended for Fedora, openSUSE |
+            | Windows 10/11 | `.exe` | NSIS installer |
+
+            **Full changelog:** https://byqalam.com/changelog
           releaseDraft: false
           prerelease: false
+          args: --bundles ${{ matrix.bundles }}
