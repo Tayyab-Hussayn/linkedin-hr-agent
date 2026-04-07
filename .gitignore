@@ -33,6 +33,10 @@ var/
 .installed.cfg
 *.egg
 
+# Exception: dashboard/src/lib/ must be committed (lib/ rule above would block it)
+!dashboard/src/lib/
+!dashboard/src/lib/**
+
 # ===============================
 # FastAPI / App
 # ===============================
