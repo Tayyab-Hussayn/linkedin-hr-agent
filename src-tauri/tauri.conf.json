@@ -28,11 +28,9 @@
   },
   "plugins": {
     "updater": {
-      "active": true,
       "endpoints": [
         "https://api.byqalam.com/updates/{{target}}/{{arch}}/{{current_version}}"
       ],
-      "dialog": false,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYyM0EyM0YzQUZCRkE4RDIKUldUU3FMK3Y4eU02WWpvWUs5VjFmbW9nZ3ZxS2N1UGVlT21WZHVoS3ZBOGxKQUJyWWNiTnVOZlYK"
     }
   },
