@@ -165,3 +165,20 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: --bundles ${{ matrix.bundles }}${{ matrix.target && format(' --target {0}', matrix.target) || '' }}
+
+      - name: Upload .sig files to release
+        shell: bash
+        run: |
+          SIG_FILES=$(find src-tauri/target -name "*.sig" 2>/dev/null | head -20)
+          if [ -z "$SIG_FILES" ]; then
+            echo "No .sig files found — signing may not have run"
+          else
+            echo "Found .sig files:"
+            echo "$SIG_FILES"
+            for sig in $SIG_FILES; do
+              echo "Uploading: $sig"
+              gh release upload ${{ github.ref_name }} "$sig" --clobber
+            done
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
