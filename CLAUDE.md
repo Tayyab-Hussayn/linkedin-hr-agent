@@ -324,11 +324,14 @@ Tauri 2 wraps the Next.js dashboard as a native desktop app and bundles the queu
 
 ### Sidecar naming convention:
 Binary must be named `qalam-worker-{target-triple}` in `src-tauri/binaries/`:
-- Linux: `qalam-worker-x86_64-unknown-linux-gnu`
-- Windows: `qalam-worker-x86_64-pc-windows-msvc.exe`
+- Linux:         `qalam-worker-x86_64-unknown-linux-gnu`
+- Windows:       `qalam-worker-x86_64-pc-windows-msvc.exe`
+- macOS Silicon: `qalam-worker-aarch64-apple-darwin`
+- macOS Intel:   `qalam-worker-x86_64-apple-darwin`
 
 ### Bundle targets:
-Currently `deb` and `rpm` only (AppImage disabled — `linuxdeploy` issue on Arch).
+`deb`, `rpm`, `nsis`, `dmg` — controlled per-platform via `--bundles` flag in CI.
+AppImage disabled (linuxdeploy issue on Arch).
 
 ### Plugins:
 - `tauri-plugin-shell` — Required for sidecar spawning
@@ -336,6 +339,48 @@ Currently `deb` and `rpm` only (AppImage disabled — `linuxdeploy` issue on Arc
 
 ### Capabilities (default.json):
 - `core:default`, `shell:allow-execute`, `shell:allow-spawn`
+
+## CI/CD — GitHub Actions (`.github/workflows/build.yaml`)
+
+Triggered on `git push origin --tags` (any `v*` tag). Builds 4 artifacts in parallel and uploads all to a single GitHub Release.
+
+### Matrix:
+| Runner | Sidecar target | Bundle output |
+|--------|---------------|---------------|
+| `ubuntu-22.04` | `x86_64-unknown-linux-gnu` | `.deb`, `.rpm` |
+| `windows-latest` | `x86_64-pc-windows-msvc` | `.exe` (NSIS) |
+| `macos-latest` | `aarch64-apple-darwin` | `.dmg` (Apple Silicon) |
+| `macos-13` | `x86_64-apple-darwin` | `.dmg` (Intel) |
+
+### Per-build steps:
+1. Checkout code
+2. Build `qalam-worker` sidecar via PyInstaller (Python 3.11, deps: requests, certifi, etc.)
+3. Copy binary to `src-tauri/binaries/qalam-worker-{target}`
+4. Install Rust (with correct `--target` for macOS)
+5. Install Node + `npm ci` in `dashboard/`
+6. `tauri-action` runs `cargo tauri build --bundles {platform_bundles}`
+7. Artifacts uploaded to GitHub Release automatically
+
+### Release asset filenames (Tauri naming convention):
+- `Qalam_x.x.x_amd64.deb`
+- `Qalam-x.x.x-1.x86_64.rpm`
+- `Qalam_x.x.x_x64-setup.exe`
+- `Qalam_x.x.x_aarch64.dmg` (Apple Silicon)
+- `Qalam_x.x.x_x64.dmg` (Intel)
+
+### To ship a new release:
+```bash
+git tag v1.x.x
+git push origin main --tags
+```
+
+### Qalam website download page (`qalam-frontend`):
+- `src/hooks/useGitHubRelease.ts` — fetches latest release from GitHub API (private repo, uses `VITE_GITHUB_TOKEN`)
+- Parses all 5 asset URLs + real file sizes from API response
+- `src/pages/DownloadPage.tsx` — Windows/Linux/macOS buttons are `<a>` tags wired to live URLs
+- macOS toggle (Apple Silicon / Intel) switches between `_aarch64.dmg` and `_x64.dmg`
+- Linux toggle (.deb / .rpm) switches between the two Linux assets
+- `VITE_GITHUB_TOKEN` must be set in Vercel environment variables (read-only PAT, repo scope only)
 
 ## Important Notes
 

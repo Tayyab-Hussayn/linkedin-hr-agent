@@ -1,3 +1,4 @@
+# version: 1.0.0
 """
 Single entry point for all LinkedIn browser actions.
 Called by Flask action server with JSON args.

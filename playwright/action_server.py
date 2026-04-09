@@ -1100,6 +1100,69 @@ def worker_cleanup():
         return cors_response({'status': 'error', 'message': str(e)}, 500)
 
 
+import hashlib
+import os as os_module
+
+@app.route('/updater/version.json', methods=['GET', 'OPTIONS'])
+def updater_version():
+    """Returns current linkedin_actions.py version and checksum."""
+    script_path = os_module.path.join(
+        os_module.path.dirname(os_module.path.abspath(__file__)),
+        'linkedin_actions.py'
+    )
+    try:
+        with open(script_path, 'rb') as f:
+            content = f.read()
+        checksum = hashlib.sha256(content).hexdigest()
+        version = '1.0.0'
+        first_line = content.decode('utf-8', errors='ignore').split('\n')[0]
+        if '# version:' in first_line:
+            version = first_line.split('# version:')[1].strip()
+
+        return cors_response({
+            'version': version,
+            'checksum': checksum,
+            'size': len(content)
+        })
+    except Exception as e:
+        return cors_response({'status': 'error', 'message': str(e)}, 500)
+
+
+@app.route('/updater/linkedin_actions.py', methods=['GET', 'OPTIONS'])
+def updater_script():
+    """Serves the latest linkedin_actions.py script."""
+    script_path = os_module.path.join(
+        os_module.path.dirname(os_module.path.abspath(__file__)),
+        'linkedin_actions.py'
+    )
+    try:
+        with open(script_path, 'rb') as f:
+            content = f.read()
+        from flask import Response
+        return Response(
+            content,
+            mimetype='text/plain',
+            headers={
+                'Access-Control-Allow-Origin': '*',
+                'Content-Disposition': 'attachment; filename=linkedin_actions.py'
+            }
+        )
+    except Exception as e:
+        return cors_response({'status': 'error', 'message': str(e)}, 500)
+
+
+@app.route('/updates/<target>/<arch>/<current_version>', methods=['GET', 'OPTIONS'])
+def update_manifest(target, arch, current_version):
+    """
+    Tauri updater endpoint.
+    Returns update manifest if newer version available.
+    Returns 204 No Content if up to date.
+    TODO: Check GitHub releases API for latest version and return real manifest.
+    """
+    from flask import Response
+    return Response(status=204)
+
+
 if __name__ == '__main__':
     app.config['TIMEOUT'] = None
     app.run(host='0.0.0.0', port=5050, debug=False, threaded=True)

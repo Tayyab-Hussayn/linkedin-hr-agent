@@ -1,10 +1,16 @@
+mod script_updater;
+
+use std::path::PathBuf;
 use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
+use tauri_plugin_updater::UpdaterExt;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_shell::init())
+    .plugin(tauri_plugin_updater::Builder::new().build())
+    .plugin(tauri_plugin_process::init())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -89,6 +95,49 @@ pub fn run() {
               eprintln!("[TAURI] Failed to create sidecar command: {}", e);
           }
       }
+
+      // Check for linkedin_actions.py updates (runs in background thread)
+      let resources_dir_pb = app.path().resource_dir()
+          .unwrap_or_else(|_| PathBuf::from("."));
+      let api_url_for_updater = api_url.clone();
+      script_updater::check_and_update(resources_dir_pb, api_url_for_updater);
+
+      // Check for full app updates in background (waits 10s after startup)
+      let app_handle = app.handle().clone();
+      tauri::async_runtime::spawn(async move {
+          tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+
+          println!("[UPDATER] Checking for app updates...");
+
+          match app_handle.updater() {
+              Ok(updater) => {
+                  match updater.check().await {
+                      Ok(Some(update)) => {
+                          println!("[UPDATER] New version available: {}", update.version);
+                          println!("[UPDATER] Current version: {}", update.current_version);
+                          println!("[UPDATER] Downloading update in background...");
+
+                          match update.download_and_install(
+                              |chunk, total| {
+                                  if let Some(total) = total {
+                                      println!("[UPDATER] Download progress: {}/{}", chunk, total);
+                                  }
+                              },
+                              || {
+                                  println!("[UPDATER] Update installed - will apply on next launch");
+                              },
+                          ).await {
+                              Ok(_) => println!("[UPDATER] Update ready for next launch"),
+                              Err(e) => println!("[UPDATER] Update install failed: {}", e),
+                          }
+                      }
+                      Ok(None) => println!("[UPDATER] App is up to date"),
+                      Err(e) => println!("[UPDATER] Update check failed: {}", e),
+                  }
+              }
+              Err(e) => println!("[UPDATER] Updater not available: {}", e),
+          }
+      });
 
       Ok(())
     })
