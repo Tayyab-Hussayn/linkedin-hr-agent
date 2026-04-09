@@ -1,0 +1,236 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - link "Q" [ref=e6] [cursor=pointer]:
+        - /url: "#/"
+        - generic [ref=e8]: Q
+      - link "Qalam" [ref=e9] [cursor=pointer]:
+        - /url: "#/"
+      - generic [ref=e11]:
+        - button "Home" [ref=e12] [cursor=pointer]
+        - button "Features" [ref=e13] [cursor=pointer]
+        - button "Pricing" [ref=e14] [cursor=pointer]
+        - button "How it works" [ref=e15] [cursor=pointer]
+      - link "Download Now ↓" [ref=e17] [cursor=pointer]:
+        - /url: "#/download"
+        - text: Download Now ↓
+  - main [ref=e19]:
+    - generic [ref=e20]:
+      - generic [ref=e25]:
+        - generic [ref=e28]: Now Available — Desktop App v1.0
+        - heading "Download *Qalam.*" [level=1] [ref=e30]
+        - paragraph [ref=e31]: The Qalam desktop app runs locally on your machine — giving you full LinkedIn automation with zero ban risk. One install, endless posts.
+        - paragraph [ref=e32]: v1.0.3 — Released April 2026
+      - generic [ref=e34]: SCROLL
+    - generic [ref=e37]:
+      - generic [ref=e40]: CHOOSE YOUR PLATFORM
+      - heading "One app, every *operating system.*" [level=2] [ref=e42]
+      - generic [ref=e43]:
+        - generic [ref=e44]:
+          - generic [ref=e45]: Most Popular
+          - img [ref=e46]
+          - heading "macOS" [level=3] [ref=e49]
+          - paragraph [ref=e50]: macOS 12 Monterey and later
+          - generic [ref=e51]:
+            - generic [ref=e52]: Disk Image (.dmg)
+            - generic [ref=e53]: ·
+            - generic [ref=e54]: 15 MB
+          - generic [ref=e55]:
+            - generic [ref=e56]: Apple Silicon
+            - generic "Intel build unavailable" [ref=e57]: Intel
+          - link "Download for Mac" [ref=e58] [cursor=pointer]:
+            - /url: https://github.com/Tayyab-Hussayn/linkedin-hr-agent/releases/download/v1.0.3/Qalam_0.1.0_aarch64.dmg
+        - generic [ref=e59]:
+          - img [ref=e60]
+          - heading "Windows" [level=3] [ref=e65]
+          - paragraph [ref=e66]: Windows 10 / 11 — 64-bit
+          - generic [ref=e67]:
+            - generic [ref=e68]: Installer (.exe)
+            - generic [ref=e69]: ·
+            - generic [ref=e70]: —
+          - link "Download for Windows":
+            - /url: "#"
+            - generic:
+              - text: Download for Windows
+              - img
+        - generic [ref=e71]:
+          - img [ref=e72]
+          - heading "Linux" [level=3] [ref=e80]
+          - paragraph [ref=e81]: Ubuntu 20.04+ / Debian / Fedora
+          - generic [ref=e82]:
+            - button "AppImage" [ref=e83] [cursor=pointer]
+            - button ".deb" [ref=e84] [cursor=pointer]: .deb
+            - button ".rpm" [ref=e86] [cursor=pointer]
+          - generic [ref=e87]:
+            - generic [ref=e88]: Package (.deb)
+            - generic [ref=e89]: ·
+            - generic [ref=e90]: 28 MB
+          - link "Download for Linux" [ref=e91] [cursor=pointer]:
+            - /url: https://github.com/Tayyab-Hussayn/linkedin-hr-agent/releases/download/v1.0.3/Qalam_0.1.0_amd64.deb
+            - generic [ref=e93]:
+              - text: Download for Linux
+              - img [ref=e94]
+    - generic [ref=e96]:
+      - generic [ref=e99]: REQUIREMENTS
+      - heading "System *requirements.*" [level=2] [ref=e100]
+      - generic [ref=e101]:
+        - generic [ref=e102]:
+          - generic [ref=e103]: MINIMUM
+          - list [ref=e104]:
+            - listitem [ref=e105]:
+              - generic [ref=e106]: —
+              - generic [ref=e107]:
+                - text: OS
+                - generic [ref=e108]: / Windows 10 64-bit, macOS 12, Ubuntu 20.04
+            - listitem [ref=e109]:
+              - generic [ref=e110]: —
+              - generic [ref=e111]:
+                - text: RAM
+                - generic [ref=e112]: / 4 GB
+            - listitem [ref=e113]:
+              - generic [ref=e114]: —
+              - generic [ref=e115]:
+                - text: Storage
+                - generic [ref=e116]: / 500 MB free
+            - listitem [ref=e117]:
+              - generic [ref=e118]: —
+              - generic [ref=e119]:
+                - text: Internet
+                - generic [ref=e120]: / Required for AI generation
+            - listitem [ref=e121]:
+              - generic [ref=e122]: —
+              - generic [ref=e123]:
+                - text: LinkedIn
+                - generic [ref=e124]: / Active account
+        - generic [ref=e125]:
+          - generic [ref=e126]: RECOMMENDED
+          - list [ref=e127]:
+            - listitem [ref=e128]:
+              - img [ref=e129]
+              - generic [ref=e131]:
+                - text: OS
+                - generic [ref=e132]: / Windows 11, macOS 14 Sonoma
+            - listitem [ref=e133]:
+              - img [ref=e134]
+              - generic [ref=e136]:
+                - text: RAM
+                - generic [ref=e137]: / 8 GB
+            - listitem [ref=e138]:
+              - img [ref=e139]
+              - generic [ref=e141]:
+                - text: Storage
+                - generic [ref=e142]: / 2 GB free
+            - listitem [ref=e143]:
+              - img [ref=e144]
+              - generic [ref=e146]:
+                - text: Internet
+                - generic [ref=e147]: / Stable broadband
+            - listitem [ref=e148]:
+              - img [ref=e149]
+              - generic [ref=e151]:
+                - text: LinkedIn
+                - generic [ref=e152]: / Premium account
+    - generic [ref=e153]:
+      - generic [ref=e156]: INSTALLATION
+      - heading "Up and running *in 3 minutes.*" [level=2] [ref=e158]
+      - generic [ref=e159]:
+        - button "windows" [ref=e160] [cursor=pointer]: windows
+        - button "macos" [ref=e162] [cursor=pointer]
+        - button "linux" [ref=e163] [cursor=pointer]
+      - generic [ref=e164]:
+        - generic [ref=e165] [cursor=pointer]:
+          - generic [ref=e166]:
+            - generic [ref=e167]:
+              - generic [ref=e168]: "1"
+              - generic [ref=e169]: Download the installer
+            - generic [ref=e170]: −
+          - paragraph [ref=e172]: Click the Download for Windows button above. The .exe installer (84 MB) will download to your Downloads folder.
+        - generic [ref=e174] [cursor=pointer]:
+          - generic [ref=e175]:
+            - generic [ref=e176]: "2"
+            - generic [ref=e177]: Run the installer
+          - generic [ref=e178]: +
+        - generic [ref=e180] [cursor=pointer]:
+          - generic [ref=e181]:
+            - generic [ref=e182]: "3"
+            - generic [ref=e183]: Launch Qalam
+          - generic [ref=e184]: +
+        - generic [ref=e186] [cursor=pointer]:
+          - generic [ref=e187]:
+            - generic [ref=e188]: "4"
+            - generic [ref=e189]: Enter your license key
+          - generic [ref=e190]: +
+        - generic [ref=e192] [cursor=pointer]:
+          - generic [ref=e193]:
+            - generic [ref=e194]: "5"
+            - generic [ref=e195]: Start automating
+          - generic [ref=e196]: +
+    - generic [ref=e198]:
+      - paragraph [ref=e199]: READY TO AUTOMATE
+      - heading "Your clients deserve *better content.*" [level=2] [ref=e200]
+      - paragraph [ref=e201]: Download Qalam today and never manually write a LinkedIn post again.
+      - generic [ref=e202]:
+        - button "Windows" [ref=e203] [cursor=pointer]:
+          - img [ref=e204]
+          - text: Windows
+        - button "macOS" [ref=e206] [cursor=pointer]:
+          - img [ref=e207]
+          - text: macOS
+        - button "Linux" [ref=e209] [cursor=pointer]:
+          - img [ref=e210]
+          - text: Linux
+      - paragraph [ref=e212]: Free 14-day trial · No credit card required · Cancel anytime
+  - contentinfo [ref=e213]:
+    - generic [ref=e215]: GENERATE • APPROVE • PUBLISH • AUTOMATE • GENERATE • APPROVE • PUBLISH • AUTOMATE • GENERATE • APPROVE • PUBLISH • AUTOMATE • GENERATE • APPROVE • PUBLISH • AUTOMATE • GENERATE • APPROVE • PUBLISH • AUTOMATE • GENERATE • APPROVE • PUBLISH • AUTOMATE • GENERATE • APPROVE • PUBLISH • AUTOMATE • GENERATE • APPROVE • PUBLISH • AUTOMATE •
+    - generic [ref=e216]:
+      - generic [ref=e217]:
+        - generic [ref=e218]:
+          - generic [ref=e220]: Q
+          - generic [ref=e221]: Qalam
+        - paragraph [ref=e222]: LinkedIn automation for professionals who don't have time to post.
+        - link "hello@qalam.ai" [ref=e223] [cursor=pointer]:
+          - /url: mailto:hello@qalam.ai
+      - generic [ref=e224]:
+        - heading "Product" [level=4] [ref=e225]
+        - list [ref=e226]:
+          - listitem [ref=e227]:
+            - link "Features" [ref=e228] [cursor=pointer]:
+              - /url: "#features"
+          - listitem [ref=e229]:
+            - link "Pricing" [ref=e230] [cursor=pointer]:
+              - /url: "#pricing"
+          - listitem [ref=e231]:
+            - link "How it works" [ref=e232] [cursor=pointer]:
+              - /url: "#how-it-works"
+          - listitem [ref=e233]:
+            - link "Changelog" [ref=e234] [cursor=pointer]:
+              - /url: "#changelog"
+      - generic [ref=e235]:
+        - heading "Company" [level=4] [ref=e236]
+        - list [ref=e237]:
+          - listitem [ref=e238]:
+            - link "About" [ref=e239] [cursor=pointer]:
+              - /url: "#"
+          - listitem [ref=e240]:
+            - link "Blog" [ref=e241] [cursor=pointer]:
+              - /url: "#"
+          - listitem [ref=e242]:
+            - link "Careers" [ref=e243] [cursor=pointer]:
+              - /url: "#"
+          - listitem [ref=e244]:
+            - link "Contact" [ref=e245] [cursor=pointer]:
+              - /url: "#"
+      - generic [ref=e246]:
+        - heading "Stay in the loop" [level=4] [ref=e247]
+        - paragraph [ref=e248]: Early access updates and LinkedIn growth tips.
+        - generic [ref=e249]:
+          - textbox "Enter your email" [ref=e250]
+          - button "Subscribe" [ref=e251] [cursor=pointer]
+    - generic [ref=e253]:
+      - paragraph [ref=e254]: © 2026 Qalam. All rights reserved.
+      - generic [ref=e255]:
+        - link "Privacy" [ref=e256] [cursor=pointer]:
+          - /url: "#"
+        - link "Terms" [ref=e257] [cursor=pointer]:
+          - /url: "#"
+      - generic [ref=e260]: Accepting new clients
