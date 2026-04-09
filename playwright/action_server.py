@@ -1151,16 +1151,79 @@ def updater_script():
         return cors_response({'status': 'error', 'message': str(e)}, 500)
 
 
+GITHUB_REPO = "Tayyab-Hussayn/linkedin-hr-agent"
+
 @app.route('/updates/<target>/<arch>/<current_version>', methods=['GET', 'OPTIONS'])
 def update_manifest(target, arch, current_version):
     """
     Tauri updater endpoint.
     Returns update manifest if newer version available.
     Returns 204 No Content if up to date.
-    TODO: Check GitHub releases API for latest version and return real manifest.
     """
     from flask import Response
-    return Response(status=204)
+    from packaging.version import Version
+    try:
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+        req = urllib.request.Request(api_url, headers={"User-Agent": "qalam-updater"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            release = json.loads(resp.read())
+
+        latest_version = release["tag_name"].lstrip("v")
+
+        if Version(latest_version) <= Version(current_version):
+            return Response(status=204)
+
+        # Find the right asset for this target/arch
+        platform_map = {
+            ("linux", "x86_64"): ".deb",
+            ("windows", "x86_64"): "-setup.exe",
+            ("darwin", "aarch64"): "_aarch64.dmg",
+            ("darwin", "x86_64"): "_x64.dmg",
+        }
+        sig_map = {
+            ("linux", "x86_64"): ".deb.sig",
+            ("windows", "x86_64"): "-setup.exe.sig",
+            ("darwin", "aarch64"): "_aarch64.dmg.sig",
+            ("darwin", "x86_64"): "_x64.dmg.sig",
+        }
+
+        suffix = platform_map.get((target, arch))
+        sig_suffix = sig_map.get((target, arch))
+
+        if not suffix:
+            return Response(status=204)
+
+        download_url = None
+        signature = None
+        pub_date = release.get("published_at", "")
+
+        for asset in release.get("assets", []):
+            name = asset["name"]
+            if name.endswith(suffix) and not name.endswith(".sig"):
+                download_url = asset["browser_download_url"]
+            if sig_suffix and name.endswith(sig_suffix):
+                sig_req = urllib.request.Request(
+                    asset["browser_download_url"],
+                    headers={"User-Agent": "qalam-updater"}
+                )
+                with urllib.request.urlopen(sig_req, timeout=10) as sig_resp:
+                    signature = sig_resp.read().decode("utf-8").strip()
+
+        if not download_url or not signature:
+            return Response(status=204)
+
+        manifest = {
+            "version": latest_version,
+            "pub_date": pub_date,
+            "url": download_url,
+            "signature": signature,
+            "notes": release.get("body", ""),
+        }
+        return cors_response(manifest)
+
+    except Exception as e:
+        print(f"[UPDATER] update_manifest error: {e}")
+        return Response(status=204)
 
 
 if __name__ == '__main__':
