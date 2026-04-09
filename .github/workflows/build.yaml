@@ -24,10 +24,6 @@ jobs:
             bundles: dmg
             target: aarch64-apple-darwin
 
-          - platform: macos-13           # Intel
-            bundles: dmg
-            target: x86_64-apple-darwin
-
     runs-on: ${{ matrix.platform }}
 
     steps:
@@ -149,6 +145,7 @@ jobs:
             | Linux (Debian/Ubuntu) | `.deb` | Recommended for Ubuntu, Pop!_OS, Mint |
             | Linux (Fedora/RHEL/Arch) | `.rpm` | Recommended for Fedora, openSUSE |
             | Windows 10/11 | `.exe` | NSIS installer |
+            | macOS (Apple Silicon) | `.dmg` | M1/M2/M3 Macs |
 
             **Full changelog:** https://byqalam.com/changelog
           releaseDraft: false
