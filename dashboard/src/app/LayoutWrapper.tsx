@@ -6,6 +6,7 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { Header } from '@/components/layout/Header'
 import { MobileNav } from '@/components/layout/MobileNav'
 import { ToastContainer } from '@/components/ui/Toast'
+import FeedbackBanner from '@/components/FeedbackBanner'
 import { useAppContext } from '@/context/AppContext'
 import { useSSE } from '@/hooks/useSSE'
 import { api, getApiUrl } from '@/lib/api'
@@ -16,6 +17,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [pendingCount, setPendingCount] = useState(0)
   const [publishedCount, setPublishedCount] = useState(0)
+  const [isOnline, setIsOnline] = useState(true)
   const [updateAvailable, setUpdateAvailable] = useState<{
     version: string
     downloadUrl: string
@@ -54,13 +56,26 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     setTimeout(checkForUpdates, 5000)
   }, [])
 
+  useEffect(() => {
+    const handleOnline = () => fetchStats()
+    const handleOffline = () => setIsOnline(false)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
   const fetchStats = async () => {
     try {
       const stats = await api.getStats()
       setPendingCount(stats.pending || 0)
       setPublishedCount(stats.published || 0)
       setScheduledCount(stats.approved || 0)
+      setIsOnline(true)
     } catch (error) {
+      setIsOnline(false)
       console.error('Failed to fetch stats:', error)
     }
   }
@@ -123,7 +138,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <Header onRefresh={handleRefresh} />
+      <Header onRefresh={handleRefresh} isOnline={isOnline} />
       <Sidebar pendingCount={pendingCount} publishedCount={publishedCount} />
       <MobileNav pendingCount={pendingCount} />
 
@@ -172,6 +187,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      <FeedbackBanner />
     </>
   )
 }

@@ -1,21 +1,20 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Sparkles, RefreshCw } from 'lucide-react'
-import { api } from '@/lib/api'
+import { RefreshCw } from 'lucide-react'
 
 interface HeaderProps {
   onRefresh?: () => void
+  isOnline: boolean
 }
 
-export function Header({ onRefresh }: HeaderProps) {
+export function Header({ onRefresh, isOnline }: HeaderProps) {
   const [lastUpdated, setLastUpdated] = useState<string>('')
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [isOnline, setIsOnline] = useState(true)
 
   useEffect(() => {
     updateTime()
-    const interval = setInterval(updateTime, 60000) // Update every minute
+    const interval = setInterval(updateTime, 60000)
     return () => clearInterval(interval)
   }, [])
 
@@ -32,11 +31,7 @@ export function Header({ onRefresh }: HeaderProps) {
   const handleRefresh = async () => {
     setIsRefreshing(true)
     try {
-      const connected = await api.testConnection()
-      setIsOnline(connected)
       if (onRefresh) onRefresh()
-    } catch (error) {
-      setIsOnline(false)
     } finally {
       setTimeout(() => setIsRefreshing(false), 500)
     }
@@ -49,10 +44,14 @@ export function Header({ onRefresh }: HeaderProps) {
         Qalam
       </span>
 
-      {/* Last updated */}
+      {/* Connection status */}
       <div className="hidden md:flex items-center gap-2 text-xs text-muted">
-        <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'} inline-block`}></span>
-        Last updated {lastUpdated}
+        <span className={`w-1.5 h-1.5 rounded-full inline-block ${
+          isOnline ? 'bg-green-500' : 'bg-red-500'
+        }`}></span>
+        <span className={isOnline ? 'text-muted' : 'text-red-400'}>
+          {isOnline ? `Last updated ${lastUpdated}` : 'Server unreachable'}
+        </span>
       </div>
 
       {/* Refresh button */}

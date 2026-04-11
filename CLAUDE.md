@@ -65,18 +65,20 @@ linkedin-hr-agent/
 │   │   │   └── LayoutWrapper.tsx  # Main layout, SSE, toast container
 │   │   ├── components/
 │   │   │   ├── layout/        # Sidebar, Header, MobileNav
-│   │   │   └── ui/            # PostCard, Toast, Sheet, SkeletonCard, etc.
+│   │   │   ├── ui/            # PostCard, Toast, Sheet, SkeletonCard, etc.
+│   │   │   └── FeedbackBanner.tsx  # Star-rating widget (shown 30d after install)
 │   │   ├── context/
 │   │   │   └── AppContext.tsx  # Shared state: toasts, scheduled count, pulse
 │   │   ├── hooks/
 │   │   │   ├── useToast.ts    # Legacy (toast now in AppContext)
 │   │   │   └── useSSE.ts      # Server-Sent Events hook
 │   │   └── lib/
-│   │       ├── api.ts         # Flask API client (apiFetch with 401 handling)
-│   │       ├── auth.ts        # JWT auth helpers
-│   │       ├── config.ts      # App configuration
-│   │       ├── types.ts       # TypeScript interfaces
-│   │       └── utils.ts       # Helper functions
+│   │       ├── api.ts             # Flask API client (apiFetch with 401 + error reporting)
+│   │       ├── errorReporter.ts   # Fire-and-forget error reporter → /api/feedback/error
+│   │       ├── auth.ts            # JWT auth helpers
+│   │       ├── config.ts          # App configuration
+│   │       ├── types.ts           # TypeScript interfaces
+│   │       └── utils.ts           # Helper functions
 │   ├── .env.local             # NEXT_PUBLIC_API_URL, NEXT_PUBLIC_N8N_URL
 │   └── package.json
 │
@@ -203,6 +205,11 @@ The Flask server is the **single API gateway**. All DB access goes through it.
 - `GET /updater/linkedin_actions.py` — Serves latest script file for hotfix download
 - `GET /updates/<target>/<arch>/<current_version>` — Tauri updater manifest (proxies GitHub Releases API, returns 204 if up to date)
 
+### Feedback Endpoints
+- `POST /api/feedback/error` — Auto error reporting from client (no auth required; uses JWT user if present)
+- `POST /api/feedback/rating` — User 1-5 star rating + optional message
+- `GET /api/feedback/all` — Admin view, last 100 feedback rows
+
 ### Legacy Endpoints
 - `POST /execute` — Direct Playwright execution (used by n8n)
 - `GET /health` — Health check
@@ -230,10 +237,29 @@ Toasts are managed in `AppContext.tsx` (shared across all pages):
 
 ### API Client (api.ts)
 - `apiFetch()` wrapper handles 401 → clears auth → redirects to `/login`
+- Network errors in `apiFetch()` are auto-reported via `errorReporter.ts` before re-throwing
 - `getCurrentClientId()` returns `string | null` (no hardcoded fallback)
 - Auth endpoints (`login`, `register`) use raw `fetch()` (no JWT needed)
 - All other endpoints use `apiFetch()` for automatic session handling
 - All responses safely parsed (text first, then JSON)
+
+### Error Reporter (errorReporter.ts)
+- `reportError(message, details)` — fire-and-forget, never throws
+- Posts to `/api/feedback/error` with `app_version`, `os_info` (navigator.userAgent), JWT if present
+- `APP_VERSION` constant must be kept in sync with the Tauri app version
+
+### Feedback Banner (FeedbackBanner.tsx)
+- Mounts in `LayoutWrapper.tsx` for all authenticated pages
+- Shown 30 days after first login (`qalam_install_date` localStorage key)
+- Re-shown every 60 days (`qalam_feedback_shown` localStorage key)
+- Star rating (1-5) + optional text → `POST /api/feedback/rating`
+
+### Connection Status (LayoutWrapper + Header)
+- `isOnline` state lives in `LayoutWrapper`, passed to `<Header isOnline={isOnline} />`
+- `fetchStats` sets `isOnline=true` on success, `false` on catch
+- Browser `online`/`offline` events wired in `LayoutWrapper` useEffect
+- Header status dot: green = connected, red = offline; text shows "Server unreachable" when offline
+- **Do not** manage `isOnline` inside Header itself — it is always a prop from LayoutWrapper
 
 ### SSE (Real-time Updates)
 - `useSSE` hook connects to `/api/events` endpoint
@@ -270,6 +296,7 @@ Key tables:
 - **plans** — Subscription tiers (daily_post_limit, can_schedule, can_analytics, can_generate_now)
 - **client_effective_limits** — View joining clients + plans with COALESCE logic
 - **posts** — Content (content, topic_pillar, approval_status, post_status, scheduled_for, retry_count)
+- **feedback** — Error reports + user ratings (type: `error`|`rating`, rating 1-5, message, error_details JSONB, app_version, os_info)
 
 **Post lifecycle:** `pending/draft` → `approved/draft` (with scheduled_for) → `publishing` → `published`
 **Failure path:** `publishing` → `draft` (retry with backoff) → `failed` (after 3 retries)
@@ -295,8 +322,10 @@ Tauri 2 wraps the Next.js dashboard as a native desktop app and bundles the queu
 - `tauri.conf.json` points `frontendDist` to `../dashboard/out` (static export)
 - `beforeBuildCommand` runs `cd ../dashboard && npm run build` automatically
 - `qalam-worker` binary is bundled as an `externalBin` sidecar
-- On app startup, `lib.rs` spawns the sidecar with env vars and keeps it alive via `app.manage(child)`
-- Sidecar stdout/stderr is captured and logged via `tauri::async_runtime::spawn` — look for `[WORKER]` lines
+- On app startup, `lib.rs` sets up tray, autostart, watchdog, and script updater
+- **System tray:** left-click or "Open Qalam" shows/focuses window; "Quit" exits. Window `CloseRequested` → hide (not quit)
+- **Autostart:** `tauri-plugin-autostart` enables login autostart on first run (`--minimized` flag passed)
+- **Watchdog:** `qalam-worker` runs inside an infinite `loop` in `async_runtime::spawn`. On crash/exit, waits 5s then restarts automatically. Log prefix: `[WATCHDOG]` / `[WORKER]` / `[WORKER ERR]`
 
 ### Environment variables passed to sidecar (lib.rs):
 | Var | Source | Purpose |
@@ -344,9 +373,13 @@ AppImage disabled (linuxdeploy issue on Arch).
 - `tauri-plugin-log` — Debug logging (debug builds only)
 - `tauri-plugin-updater` — Full app auto-update via signed releases
 - `tauri-plugin-process` — Required by updater for restart after install
+- `tauri-plugin-autostart` — Login autostart (enabled on first run in `.setup()`)
+- `tray-icon` feature on `tauri` crate — System tray (built into Tauri core, no separate plugin)
+- `tokio = { features = ["time"] }` — Used by watchdog loop for `tokio::time::sleep`
 
 ### Capabilities (default.json):
-- `core:default`, `shell:allow-execute`, `shell:allow-spawn`, `updater:default`, `process:allow-exit`
+- `core:default`, `shell:allow-execute`, `shell:allow-spawn`
+- `autostart:allow-enable`, `autostart:allow-disable`, `autostart:allow-is-enabled`
 
 ## CI/CD — GitHub Actions (`.github/workflows/build.yaml`)
 

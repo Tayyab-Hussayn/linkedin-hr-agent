@@ -1,4 +1,5 @@
 import { Post, Stats, PillarStat, DailyActivity } from './types'
+import { reportError } from './errorReporter'
 
 function getN8nUrl(): string {
   if (typeof window !== 'undefined') {
@@ -44,14 +45,22 @@ function getCurrentClientId(): string | null {
 }
 
 async function apiFetch(url: string, options?: RequestInit): Promise<Response> {
-  const res = await fetch(url, options)
-  if (res.status === 401) {
-    localStorage.removeItem('postflow_token')
-    localStorage.removeItem('postflow_user')
-    window.location.href = '/login'
-    throw new Error('Session expired')
+  try {
+    const res = await fetch(url, options)
+    if (res.status === 401) {
+      localStorage.removeItem('postflow_token')
+      localStorage.removeItem('postflow_user')
+      window.location.href = '/login'
+      throw new Error('Session expired')
+    }
+    return res
+  } catch (error) {
+    reportError('API fetch failed', {
+      url,
+      error: String(error)
+    })
+    throw error
   }
-  return res
 }
 
 export const api = {
@@ -241,7 +250,7 @@ export const api = {
     const cid = clientId || getCurrentClientId()
     if (!cid) return { status: 'error', message: 'Not authenticated' }
     try {
-      const res = await apiFetch(`${getN8nUrl()}/webhook/generate-now`, {
+      const res = await apiFetch(`${getApiUrl()}/api/generate-now`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({ client_id: cid })

@@ -1257,6 +1257,74 @@ def app_version():
         })
 
 
+@app.route('/api/feedback/error', methods=['POST', 'OPTIONS'])
+def report_error():
+    """Auto error reporting from client app."""
+    body = request.get_json() or {}
+    user = get_current_user()
+    client_id = user.get('client_id') if user else 'anonymous'
+
+    db_query("""
+        INSERT INTO feedback
+        (client_id, type, message, error_details, app_version, os_info)
+        VALUES (%s, 'error', %s, %s, %s, %s)
+    """, [
+        client_id,
+        body.get('message', 'Unknown error'),
+        json.dumps(body.get('details', {})),
+        body.get('app_version', 'unknown'),
+        body.get('os_info', 'unknown')
+    ], fetch=False)
+
+    return cors_response({'status': 'ok'})
+
+
+@app.route('/api/feedback/rating', methods=['POST', 'OPTIONS'])
+def submit_rating():
+    """User satisfaction rating submission."""
+    body = request.get_json() or {}
+    user = get_current_user()
+    client_id = user.get('client_id') if user else 'anonymous'
+
+    rating = body.get('rating')
+    message = body.get('message', '')
+
+    if rating and (int(rating) < 1 or int(rating) > 5):
+        return cors_response({
+            'status': 'error',
+            'message': 'Rating must be 1-5'
+        }, 400)
+
+    db_query("""
+        INSERT INTO feedback
+        (client_id, type, rating, message, app_version)
+        VALUES (%s, 'rating', %s, %s, %s)
+    """, [
+        client_id,
+        rating,
+        message,
+        body.get('app_version', 'unknown')
+    ], fetch=False)
+
+    return cors_response({'status': 'ok', 'message': 'Thank you for your feedback!'})
+
+
+@app.route('/api/feedback/all', methods=['GET', 'OPTIONS'])
+def get_feedback():
+    """Admin endpoint to view all feedback."""
+    rows = db_query("""
+        SELECT id, client_id, type, rating, message,
+               error_details, app_version, os_info, created_at
+        FROM feedback
+        ORDER BY created_at DESC
+        LIMIT 100
+    """)
+    for row in rows:
+        if row.get('created_at'):
+            row['created_at'] = row['created_at'].isoformat()
+    return cors_response({'status': 'ok', 'feedback': rows})
+
+
 if __name__ == '__main__':
     app.config['TIMEOUT'] = None
     app.run(host='0.0.0.0', port=5050, debug=False, threaded=True)
