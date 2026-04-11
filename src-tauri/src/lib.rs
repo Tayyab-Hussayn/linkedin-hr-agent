@@ -19,7 +19,7 @@ pub fn run() {
 
       // Launch queue worker sidecar
       let api_url = std::env::var("QALAM_API_URL")
-          .unwrap_or_else(|_| "http://localhost:5050".to_string());
+          .unwrap_or_else(|_| "https://api.byqalam.com".to_string());
 
       // Find Python path: prefer the playwright venv (has playwright + deps),
       // otherwise fall back to system python3.

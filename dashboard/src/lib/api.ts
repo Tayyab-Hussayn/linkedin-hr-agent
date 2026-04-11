@@ -8,14 +8,14 @@ function getN8nUrl(): string {
   return process.env.NEXT_PUBLIC_N8N_URL || 'http://localhost:5678'
 }
 
-function getApiUrl(): string {
+export function getApiUrl(): string {
   if (typeof window !== 'undefined') {
     const stored = localStorage.getItem('api_url')
     if (stored && stored.trim() !== '') {
       return stored.trim()
     }
   }
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050'
+  return process.env.NEXT_PUBLIC_API_URL || 'https://api.byqalam.com'
 }
 
 function getHeaders(): HeadersInit {

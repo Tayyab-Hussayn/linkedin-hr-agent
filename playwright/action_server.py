@@ -1226,6 +1226,37 @@ def update_manifest(target, arch, current_version):
         return Response(status=204)
 
 
+@app.route('/updater/app-version.json', methods=['GET', 'OPTIONS'])
+def app_version():
+    """Returns latest app version from GitHub releases."""
+    import urllib.request as urllib_req
+    import json as json_mod
+
+    GITHUB_REPO = "Tayyab-Hussayn/linkedin-hr-agent"
+
+    try:
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+        req = urllib_req.Request(api_url, headers={
+            'User-Agent': 'Qalam-Updater/1.0',
+            'Accept': 'application/vnd.github.v3+json'
+        })
+        with urllib_req.urlopen(req, timeout=10) as resp:
+            release = json_mod.loads(resp.read())
+
+        return cors_response({
+            'version': release['tag_name'].lstrip('v'),
+            'tag': release['tag_name'],
+            'notes': release.get('body', ''),
+            'published_at': release.get('published_at', ''),
+            'download_url': 'https://www.byqalam.com/download'
+        })
+    except Exception as e:
+        return cors_response({
+            'version': '0.0.0',
+            'download_url': 'https://www.byqalam.com/download'
+        })
+
+
 if __name__ == '__main__':
     app.config['TIMEOUT'] = None
     app.run(host='0.0.0.0', port=5050, debug=False, threaded=True)

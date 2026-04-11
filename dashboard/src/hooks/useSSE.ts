@@ -28,7 +28,7 @@ export function useSSE(handlers: SSEHandlers) {
 
     const token = localStorage.getItem('postflow_token')
     const apiUrl = localStorage.getItem('api_url') ||
-      process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050'
+      process.env.NEXT_PUBLIC_API_URL || 'https://api.byqalam.com'
 
     // SSE doesn't support custom headers — pass token as query param
     const url = `${apiUrl}/api/events?token=${token}`

@@ -51,7 +51,7 @@ export default function SettingsPage() {
       // Load API URL from localStorage
       if (typeof window !== 'undefined') {
         const storedApiUrl = localStorage.getItem('api_url') ||
-          process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050'
+          process.env.NEXT_PUBLIC_API_URL || 'https://api.byqalam.com'
         setApiUrl(storedApiUrl)
       }
 
