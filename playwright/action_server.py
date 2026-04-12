@@ -1152,6 +1152,82 @@ def updater_script():
 
 
 GITHUB_REPO = "Tayyab-Hussayn/linkedin-hr-agent"
+FLASK_API_BASE = "https://api.byqalam.com"
+
+def _gh_headers():
+    """Auth headers for GitHub API — works for both public and private repos."""
+    h = {
+        "User-Agent": "qalam-server/1.0",
+        "Accept": "application/vnd.github+json",
+    }
+    token = os_module.environ.get("GITHUB_TOKEN", "")
+    if token:
+        h["Authorization"] = f"Bearer {token}"
+    return h
+
+def _fetch_latest_release():
+    """Fetch latest GitHub release JSON. Uses GITHUB_TOKEN if set."""
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+    req = urllib.request.Request(url, headers=_gh_headers())
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read())
+
+def _proxy_download_url(platform: str) -> str:
+    """Return Flask proxy URL for a platform download."""
+    return f"{FLASK_API_BASE}/api/download/{platform}"
+
+
+@app.route('/api/download/<platform>', methods=['GET'])
+def download_asset(platform):
+    """
+    Streaming proxy for release asset downloads.
+    Lets private-repo assets be downloaded publicly via the server's GITHUB_TOKEN.
+    Platforms: windows | mac-silicon | mac-intel | deb | rpm
+    """
+    import requests as req_lib
+    from flask import Response, stream_with_context
+
+    suffix_map = {
+        "windows":     lambda n: n.endswith("-setup.exe") and not n.endswith(".sig"),
+        "mac-silicon": lambda n: n.endswith(".dmg") and "aarch64" in n and not n.endswith(".sig"),
+        "mac-intel":   lambda n: n.endswith(".dmg") and "x64" in n and not n.endswith(".sig"),
+        "deb":         lambda n: n.endswith(".deb") and not n.endswith(".sig"),
+        "rpm":         lambda n: n.endswith(".rpm") and not n.endswith(".sig"),
+    }
+    matcher = suffix_map.get(platform)
+    if not matcher:
+        return cors_response({"error": "Unknown platform"}, 400)
+
+    try:
+        release = _fetch_latest_release()
+        asset = next((a for a in release.get("assets", []) if matcher(a["name"])), None)
+        if not asset:
+            return cors_response({"error": "Asset not found"}, 404)
+
+        token = os_module.environ.get("GITHUB_TOKEN", "")
+        headers = {"User-Agent": "qalam-server/1.0"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        r = req_lib.get(asset["browser_download_url"], headers=headers,
+                        stream=True, timeout=60)
+        r.raise_for_status()
+
+        filename = asset["name"]
+        response_headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Type": r.headers.get("Content-Type", "application/octet-stream"),
+            "Content-Length": r.headers.get("Content-Length", ""),
+        }
+        return Response(
+            stream_with_context(r.iter_content(chunk_size=65536)),
+            headers=response_headers,
+            status=200,
+        )
+    except Exception as e:
+        print(f"[DOWNLOAD] download_asset error ({platform}): {e}")
+        return cors_response({"error": "Download failed"}, 502)
+
 
 @app.route('/updates/<target>/<arch>/<current_version>', methods=['GET', 'OPTIONS'])
 def update_manifest(target, arch, current_version):
@@ -1163,61 +1239,45 @@ def update_manifest(target, arch, current_version):
     from flask import Response
     from packaging.version import Version
     try:
-        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-        req = urllib.request.Request(api_url, headers={"User-Agent": "qalam-updater"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            release = json.loads(resp.read())
-
+        release = _fetch_latest_release()
         latest_version = release["tag_name"].lstrip("v")
 
         if Version(latest_version) <= Version(current_version):
             return Response(status=204)
 
-        # Find the right asset for this target/arch
         platform_map = {
-            ("linux", "x86_64"): ".deb",
-            ("windows", "x86_64"): "-setup.exe",
-            ("darwin", "aarch64"): "_aarch64.dmg",
-            ("darwin", "x86_64"): "_x64.dmg",
+            ("linux",   "x86_64"):  ("deb",         ".deb.sig"),
+            ("windows", "x86_64"):  ("windows",     "-setup.exe.sig"),
+            ("darwin",  "aarch64"): ("mac-silicon",  "_aarch64.dmg.sig"),
+            ("darwin",  "x86_64"):  ("mac-intel",    "_x64.dmg.sig"),
         }
-        sig_map = {
-            ("linux", "x86_64"): ".deb.sig",
-            ("windows", "x86_64"): "-setup.exe.sig",
-            ("darwin", "aarch64"): "_aarch64.dmg.sig",
-            ("darwin", "x86_64"): "_x64.dmg.sig",
-        }
-
-        suffix = platform_map.get((target, arch))
-        sig_suffix = sig_map.get((target, arch))
-
-        if not suffix:
+        entry = platform_map.get((target, arch))
+        if not entry:
             return Response(status=204)
 
-        download_url = None
-        signature = None
-        pub_date = release.get("published_at", "")
+        dl_platform, sig_suffix = entry
 
+        # Fetch .sig content server-side (needs token for private repo)
+        signature = None
         for asset in release.get("assets", []):
-            name = asset["name"]
-            if name.endswith(suffix) and not name.endswith(".sig"):
-                download_url = asset["browser_download_url"]
-            if sig_suffix and name.endswith(sig_suffix):
+            if asset["name"].endswith(sig_suffix):
                 sig_req = urllib.request.Request(
                     asset["browser_download_url"],
-                    headers={"User-Agent": "qalam-updater"}
+                    headers=_gh_headers()
                 )
                 with urllib.request.urlopen(sig_req, timeout=10) as sig_resp:
                     signature = sig_resp.read().decode("utf-8").strip()
+                break
 
-        if not download_url or not signature:
+        if not signature:
             return Response(status=204)
 
         manifest = {
-            "version": latest_version,
-            "pub_date": pub_date,
-            "url": download_url,
+            "version":   latest_version,
+            "pub_date":  release.get("published_at", ""),
+            "url":       _proxy_download_url(dl_platform),
             "signature": signature,
-            "notes": release.get("body", ""),
+            "notes":     release.get("body", ""),
         }
         return cors_response(manifest)
 
@@ -1229,92 +1289,54 @@ def update_manifest(target, arch, current_version):
 @app.route('/updater/app-version.json', methods=['GET', 'OPTIONS'])
 def app_version():
     """Returns latest app version from GitHub releases."""
-    import urllib.request as urllib_req
-    import json as json_mod
-
-    GITHUB_REPO = "Tayyab-Hussayn/linkedin-hr-agent"
-
     try:
-        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-        req = urllib_req.Request(api_url, headers={
-            'User-Agent': 'Qalam-Updater/1.0',
-            'Accept': 'application/vnd.github.v3+json'
-        })
-        with urllib_req.urlopen(req, timeout=10) as resp:
-            release = json_mod.loads(resp.read())
-
+        release = _fetch_latest_release()
         return cors_response({
-            'version': release['tag_name'].lstrip('v'),
-            'tag': release['tag_name'],
-            'notes': release.get('body', ''),
+            'version':      release['tag_name'].lstrip('v'),
+            'tag':          release['tag_name'],
+            'notes':        release.get('body', ''),
             'published_at': release.get('published_at', ''),
             'download_url': 'https://www.byqalam.com/download'
         })
     except Exception as e:
-        return cors_response({
-            'version': '0.0.0',
-            'download_url': 'https://www.byqalam.com/download'
-        })
+        return cors_response({'version': '0.0.0', 'download_url': 'https://www.byqalam.com/download'})
 
 
 @app.route('/api/release/latest', methods=['GET', 'OPTIONS'])
 def release_latest():
     """
-    Returns full latest release info for the download page.
-    Server-side proxy — no GitHub token ever exposed to the browser.
-    Supports optional GITHUB_TOKEN env var for private repos.
+    Returns latest release info for the download page.
+    Download URLs point to Flask proxy (/api/download/<platform>)
+    so private-repo assets are accessible to all users.
     """
     try:
-        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-        headers = {
-            'User-Agent': 'Qalam-Website/1.0',
-            'Accept': 'application/vnd.github+json',
-        }
-        github_token = os_module.environ.get('GITHUB_TOKEN', '')
-        if github_token:
-            headers['Authorization'] = f'Bearer {github_token}'
+        release = _fetch_latest_release()
 
-        req = urllib.request.Request(api_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            release = json.loads(resp.read())
+        def find_asset(matcher):
+            return next((a for a in release.get('assets', []) if matcher(a['name'])), None)
 
-        def find_asset(suffix, exclude_sig=True):
-            for a in release.get('assets', []):
-                name = a['name']
-                if exclude_sig and name.endswith('.sig'):
-                    continue
-                if name.endswith(suffix):
-                    return a
-            return None
+        def fmt_size(a):
+            return f"{a['size'] / 1024 / 1024:.0f} MB" if a else None
 
-        def fmt_size(b):
-            return f"{b / 1024 / 1024:.0f} MB"
-
-        win      = find_asset('-setup.exe')
-        deb      = find_asset('.deb')
-        rpm      = find_asset('.rpm')
-        mac_arm  = next((a for a in release.get('assets', [])
-                         if a['name'].endswith('.dmg')
-                         and 'aarch64' in a['name']
-                         and not a['name'].endswith('.sig')), None)
-        mac_x64  = next((a for a in release.get('assets', [])
-                         if a['name'].endswith('.dmg')
-                         and 'x64' in a['name']
-                         and not a['name'].endswith('.sig')), None)
+        win     = find_asset(lambda n: n.endswith('-setup.exe') and not n.endswith('.sig'))
+        deb     = find_asset(lambda n: n.endswith('.deb')       and not n.endswith('.sig'))
+        rpm     = find_asset(lambda n: n.endswith('.rpm')       and not n.endswith('.sig'))
+        mac_arm = find_asset(lambda n: n.endswith('.dmg') and 'aarch64' in n and not n.endswith('.sig'))
+        mac_x64 = find_asset(lambda n: n.endswith('.dmg') and 'x64'     in n and not n.endswith('.sig'))
 
         return cors_response({
             'version':          release['tag_name'],
             'published_at':     release.get('published_at', ''),
-            'windows':          win['browser_download_url']  if win      else None,
-            'windows_size':     fmt_size(win['size'])        if win      else None,
-            'mac_silicon':      mac_arm['browser_download_url'] if mac_arm else None,
-            'mac_silicon_size': fmt_size(mac_arm['size'])    if mac_arm  else None,
-            'mac_intel':        mac_x64['browser_download_url'] if mac_x64 else None,
-            'mac_intel_size':   fmt_size(mac_x64['size'])    if mac_x64  else None,
-            'deb':              deb['browser_download_url']  if deb      else None,
-            'deb_size':         fmt_size(deb['size'])        if deb      else None,
-            'rpm':              rpm['browser_download_url']  if rpm      else None,
-            'rpm_size':         fmt_size(rpm['size'])        if rpm      else None,
+            'windows':          _proxy_download_url('windows')     if win     else None,
+            'windows_size':     fmt_size(win),
+            'mac_silicon':      _proxy_download_url('mac-silicon') if mac_arm else None,
+            'mac_silicon_size': fmt_size(mac_arm),
+            'mac_intel':        _proxy_download_url('mac-intel')   if mac_x64 else None,
+            'mac_intel_size':   fmt_size(mac_x64),
+            'deb':              _proxy_download_url('deb')         if deb     else None,
+            'deb_size':         fmt_size(deb),
+            'rpm':              _proxy_download_url('rpm')         if rpm     else None,
+            'rpm_size':         fmt_size(rpm),
         })
     except Exception as e:
         print(f"[RELEASE] release_latest error: {e}")
