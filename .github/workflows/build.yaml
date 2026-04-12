@@ -30,6 +30,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ── Rust setup (must come before sidecar build so rustc -vV is correct) ──
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
       # ── Build qalam-worker sidecar ───────────────────────────────
       # Must happen before Tauri build — binary must exist in src-tauri/binaries/
 
@@ -85,15 +92,8 @@ jobs:
             --hidden-import idna \
             --collect-all requests \
             queue_worker_v5.py
-          TARGET=$(rustc -vV | grep host | awk '{print $2}')
-          cp dist/qalam-worker ../src-tauri/binaries/qalam-worker-$TARGET
-
-      # ── Rust & Node setup ────────────────────────────────────────
-
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+          # Use the matrix target directly — avoids rustc -vV race with pre-installed toolchain
+          cp dist/qalam-worker ../src-tauri/binaries/qalam-worker-aarch64-apple-darwin
 
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@v2

@@ -108,7 +108,7 @@ export default function OnboardingPage() {
                   className={`p-4 rounded-2xl border-2 text-left transition-all ${
                     selectedNiche === key
                       ? 'border-accent bg-accent/5'
-                      : 'border-stroke bg-surface hover:border-stroke/80'
+                      : 'border-gray-200 bg-surface hover:border-gray-300'
                   }`}
                 >
                   <div className="text-2xl mb-2">{NICHE_ICONS[key] || '💡'}</div>
@@ -146,7 +146,8 @@ export default function OnboardingPage() {
                 onChange={e => setNewPillar(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addPillar()}
                 placeholder="Add a topic..."
-                className="flex-1 px-4 py-2.5 bg-surface-2 border border-stroke text-text-primary placeholder:text-muted rounded-lg text-sm focus:outline-none focus:border-accent"
+                className="flex-1 bg-surface border border-gray-200 text-text-primary placeholder:text-muted rounded-lg text-sm focus:outline-none focus:border-accent"
+                style={{ padding: '12px 16px', height: '44px' }}
               />
               <button
                 onClick={addPillar}
@@ -179,7 +180,8 @@ export default function OnboardingPage() {
                   value={tone}
                   onChange={e => setTone(e.target.value)}
                   placeholder="e.g. Empathetic, data-driven, direct"
-                  className="w-full px-4 py-2.5 bg-surface-2 border border-stroke text-text-primary placeholder:text-muted rounded-lg text-sm focus:outline-none focus:border-accent"
+                  className="w-full bg-surface border border-gray-200 text-text-primary placeholder:text-muted rounded-lg text-sm focus:outline-none focus:border-accent"
+                  style={{ padding: '12px 16px', height: '44px' }}
                 />
               </div>
               <div>
@@ -189,7 +191,8 @@ export default function OnboardingPage() {
                   value={targetAudience}
                   onChange={e => setTargetAudience(e.target.value)}
                   placeholder="e.g. HR managers, startup founders, developers"
-                  className="w-full px-4 py-2.5 bg-surface-2 border border-stroke text-text-primary placeholder:text-muted rounded-lg text-sm focus:outline-none focus:border-accent"
+                  className="w-full bg-surface border border-gray-200 text-text-primary placeholder:text-muted rounded-lg text-sm focus:outline-none focus:border-accent"
+                  style={{ padding: '12px 16px', height: '44px' }}
                 />
               </div>
             </div>
@@ -221,7 +224,7 @@ export default function OnboardingPage() {
                   className={`p-4 rounded-2xl border-2 text-left transition-all ${
                     publishingSlot === time
                       ? 'border-accent bg-accent/5'
-                      : 'border-stroke bg-surface hover:border-stroke/80'
+                      : 'border-gray-200 bg-surface hover:border-gray-300'
                   }`}
                 >
                   <div className="font-semibold text-text-primary text-sm">{label}</div>
@@ -266,7 +269,8 @@ export default function OnboardingPage() {
                   value={linkedinEmail}
                   onChange={e => setLinkedinEmail(e.target.value)}
                   placeholder="your@email.com"
-                  className="w-full px-4 py-2.5 bg-surface-2 border border-stroke text-text-primary placeholder:text-muted rounded-lg text-sm focus:outline-none focus:border-accent"
+                  className="w-full bg-surface border border-gray-200 text-text-primary placeholder:text-muted rounded-lg text-sm focus:outline-none focus:border-accent"
+                  style={{ padding: '12px 16px', height: '44px' }}
                 />
               </div>
               <div>
@@ -278,7 +282,8 @@ export default function OnboardingPage() {
                   value={linkedinPassword}
                   onChange={e => setLinkedinPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full px-4 py-2.5 bg-surface-2 border border-stroke text-text-primary placeholder:text-muted rounded-lg text-sm focus:outline-none focus:border-accent"
+                  className="w-full bg-surface border border-gray-200 text-text-primary placeholder:text-muted rounded-lg text-sm focus:outline-none focus:border-accent"
+                  style={{ padding: '12px 16px', height: '44px' }}
                 />
               </div>
             </div>

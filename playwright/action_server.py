@@ -1257,6 +1257,70 @@ def app_version():
         })
 
 
+@app.route('/api/release/latest', methods=['GET', 'OPTIONS'])
+def release_latest():
+    """
+    Returns full latest release info for the download page.
+    Server-side proxy — no GitHub token ever exposed to the browser.
+    Supports optional GITHUB_TOKEN env var for private repos.
+    """
+    try:
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+        headers = {
+            'User-Agent': 'Qalam-Website/1.0',
+            'Accept': 'application/vnd.github+json',
+        }
+        github_token = os_module.environ.get('GITHUB_TOKEN', '')
+        if github_token:
+            headers['Authorization'] = f'Bearer {github_token}'
+
+        req = urllib.request.Request(api_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            release = json.loads(resp.read())
+
+        def find_asset(suffix, exclude_sig=True):
+            for a in release.get('assets', []):
+                name = a['name']
+                if exclude_sig and name.endswith('.sig'):
+                    continue
+                if name.endswith(suffix):
+                    return a
+            return None
+
+        def fmt_size(b):
+            return f"{b / 1024 / 1024:.0f} MB"
+
+        win      = find_asset('-setup.exe')
+        deb      = find_asset('.deb')
+        rpm      = find_asset('.rpm')
+        mac_arm  = next((a for a in release.get('assets', [])
+                         if a['name'].endswith('.dmg')
+                         and 'aarch64' in a['name']
+                         and not a['name'].endswith('.sig')), None)
+        mac_x64  = next((a for a in release.get('assets', [])
+                         if a['name'].endswith('.dmg')
+                         and 'x64' in a['name']
+                         and not a['name'].endswith('.sig')), None)
+
+        return cors_response({
+            'version':          release['tag_name'],
+            'published_at':     release.get('published_at', ''),
+            'windows':          win['browser_download_url']  if win      else None,
+            'windows_size':     fmt_size(win['size'])        if win      else None,
+            'mac_silicon':      mac_arm['browser_download_url'] if mac_arm else None,
+            'mac_silicon_size': fmt_size(mac_arm['size'])    if mac_arm  else None,
+            'mac_intel':        mac_x64['browser_download_url'] if mac_x64 else None,
+            'mac_intel_size':   fmt_size(mac_x64['size'])    if mac_x64  else None,
+            'deb':              deb['browser_download_url']  if deb      else None,
+            'deb_size':         fmt_size(deb['size'])        if deb      else None,
+            'rpm':              rpm['browser_download_url']  if rpm      else None,
+            'rpm_size':         fmt_size(rpm['size'])        if rpm      else None,
+        })
+    except Exception as e:
+        print(f"[RELEASE] release_latest error: {e}")
+        return cors_response({'error': 'Failed to fetch release info'}, 502)
+
+
 @app.route('/api/feedback/error', methods=['POST', 'OPTIONS'])
 def report_error():
     """Auto error reporting from client app."""

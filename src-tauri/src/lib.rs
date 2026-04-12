@@ -33,8 +33,11 @@ pub fn run() {
             }
 
             // ── STEP 1: System tray ────────────────────────────────────────
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+            let mut tray_builder = TrayIconBuilder::new();
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
+            }
+            let _tray = tray_builder
                 .tooltip("Qalam — LinkedIn Automation")
                 .menu(&tauri::menu::Menu::with_items(
                     app,
