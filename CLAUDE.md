@@ -99,7 +99,8 @@ linkedin-hr-agent/
 │   ├── src/lib.rs             # Tauri app entry — sidecar launch + both auto-updaters
 │   ├── src/script_updater.rs  # linkedin_actions.py hotfix updater (version check + SHA-256)
 │   ├── Cargo.toml             # Rust deps: tauri, tauri-plugin-shell/log/updater/process, reqwest, sha2
-│   ├── tauri.conf.json        # App config: frontendDist, externalBin, updater pubkey + endpoint
+│   ├── tauri.conf.json        # App config: frontendDist, externalBin, macOS bundle config
+│   ├── entitlements.plist     # macOS entitlements: network, subprocess spawn, PyInstaller support
 │   ├── binaries/              # Sidecar binaries (qalam-worker-{target-triple})
 │   └── capabilities/default.json  # Permissions: core, shell, updater, process
 │
@@ -203,7 +204,14 @@ The Flask server is the **single API gateway**. All DB access goes through it.
 ### Updater Endpoints
 - `GET /updater/version.json` — Script version + SHA-256 checksum (used by `script_updater.rs`)
 - `GET /updater/linkedin_actions.py` — Serves latest script file for hotfix download
-- `GET /updates/<target>/<arch>/<current_version>` — Tauri updater manifest (proxies GitHub Releases API, returns 204 if up to date)
+- `GET /updater/app-version.json` — Latest app version info (version, tag, notes)
+- `GET /updates/<target>/<arch>/<current_version>` — Tauri updater manifest. Returns proxy download URL + `.sig` content; 204 if up to date.
+
+### Release / Download Endpoints (private repo support)
+- `GET /api/release/latest` — Full latest release info for download page. Returns Flask proxy URLs (not GitHub direct URLs) so private-repo assets are publicly downloadable.
+- `GET /api/download/<platform>` — Streaming proxy for release assets using server-side `GITHUB_TOKEN`. Platforms: `windows` | `mac-silicon` | `mac-intel` | `deb` | `rpm`
+
+**Private repo setup:** Set `GITHUB_TOKEN` env var on the server (PAT with `repo` scope). All GitHub API calls use `_gh_headers()` helper which injects the token. Without it, only public repos work.
 
 ### Feedback Endpoints
 - `POST /api/feedback/error` — Auto error reporting from client (no auth required; uses JWT user if present)
@@ -228,6 +236,8 @@ All components use CSS custom property tokens, NOT hardcoded Tailwind colors:
 - `text-bg` — text on accent backgrounds
 
 **Never use** `bg-white`, `bg-gray-*`, `text-gray-*`, or `border-gray-*` in components.
+
+**Exception — input field borders:** `border-stroke` (#212121) is nearly invisible against `bg-surface-2` (#1c1c1c). For input fields use `border-gray-200` (#2d2d2d) which gives adequate contrast on the dark page background.
 
 ### Toast System
 Toasts are managed in `AppContext.tsx` (shared across all pages):
@@ -271,6 +281,18 @@ Toasts are managed in `AppContext.tsx` (shared across all pages):
 - `auth.ts` provides `isLoggedIn()`, `getUser()`, `logout()`
 - Protected pages redirect to `/login` if no valid token
 - Public pages: `/login`, `/register`, `/onboarding`
+
+### Input Fields — WebKit/Tauri Padding Bug
+`globals.css` globally zeroes out `padding-top` and `padding-bottom` on all `input` elements (WebKit alignment fix). This means Tailwind `py-*` classes have **no effect** on inputs.
+
+**Always use inline styles for input padding/height:**
+```tsx
+<input
+  className="w-full bg-surface border border-gray-200 text-text-primary ..."
+  style={{ padding: '12px 16px', height: '44px' }}
+/>
+```
+This matches the login page input size and is the established pattern across all forms.
 
 ## Queue Worker v5
 
@@ -396,9 +418,9 @@ Triggered on `git push origin --tags` (any `v*` tag). Builds 4 artifacts in para
 
 ### Per-build steps:
 1. Checkout code
-2. Build `qalam-worker` sidecar via PyInstaller (Python 3.11, deps: requests, certifi, etc.)
-3. Copy binary to `src-tauri/binaries/qalam-worker-{target}`
-4. Install Rust (with correct `--target` for macOS)
+2. **Install Rust first** (must come before sidecar build so `rustc -vV` is reliable)
+3. Build `qalam-worker` sidecar via PyInstaller (Python 3.11)
+4. Copy binary to `src-tauri/binaries/qalam-worker-{target}` (macOS target hardcoded to `aarch64-apple-darwin`)
 5. Install Node + `npm ci` in `dashboard/`
 6. `tauri-action` runs `cargo tauri build --bundles {platform_bundles}`
 7. Artifacts uploaded to GitHub Release automatically
@@ -417,14 +439,13 @@ git tag v1.x.x
 git push origin main --tags
 ```
 
-### Qalam website download page (`qalam-frontend`):
-- `src/hooks/useGitHubRelease.ts` — fetches latest release from GitHub API (private repo, uses `VITE_GITHUB_TOKEN`)
-- Parses asset URLs + real file sizes from API response
+### Qalam website download page (`qalam-frontend` repo: `Tayyab-Hussayn/Linkedn-agent-frontend`):
+- `src/hooks/useGitHubRelease.ts` — fetches from `https://api.byqalam.com/api/release/latest` (Flask proxy, no token in browser)
 - `src/pages/DownloadPage.tsx` — card layout: macOS (left) | Windows (center, featured) | Linux (right)
 - macOS: Apple Silicon only (Intel greyed out — no CI runner available)
 - Linux toggle: .deb / .rpm (AppImage disabled)
 - Windows: featured card with "Most Popular" badge, golden gradient border + button
-- `VITE_GITHUB_TOKEN` must be set in Vercel environment variables (read-only PAT, repo scope only)
+- **No `VITE_GITHUB_TOKEN` needed** — token lives on the Flask server only (`GITHUB_TOKEN` env var)
 
 ### GitHub Actions secrets required:
 | Secret | Purpose |
@@ -467,14 +488,26 @@ Uses Tauri's built-in updater with cryptographic signing.
 - `src-tauri/src/lib.rs` — wires both updaters into Tauri `.setup()` closure
 - `src-tauri/tauri.conf.json` → `plugins.updater` — endpoint URL + public key
 
+## Tauri macOS Notes
+
+- **entitlements.plist** — Required for macOS. Grants: `network.client`, `cs.allow-jit`, `cs.allow-unsigned-executable-memory`, `cs.disable-library-validation`. Without it, the sidecar and network calls are killed by the OS.
+- **`default_window_icon()`** — Never call `.unwrap()` on this. Returns `None` if icon can't be loaded, causing immediate crash. Use `if let Some(icon)` pattern.
+- **Notarization** — App is not notarized (no Apple Developer account). Users on macOS need to go to System Settings → Privacy & Security → Open Anyway on first launch.
+- **Apple Silicon only** — CI builds `aarch64-apple-darwin` only. Intel Mac users are not supported.
+
 ## Important Notes
 
 - **Brand:** "Qalam" everywhere user-facing. Internal code may still reference "postflow" in localStorage keys.
 - **No hardcoded client IDs** — `getCurrentClientId()` returns null if not logged in
 - **No console.log in production** — Only `console.error` for actual errors
 - **Dark theme only** — Use token classes, never hardcoded gray/white colors
+- **Input padding** — Always use `style={{ padding: '12px 16px', height: '44px' }}` on inputs; `py-*` classes are zeroed by globals.css
+- **Input borders** — Use `border-gray-200` (not `border-stroke`) for input fields; stroke is too faint
 - **PostgreSQL port** — 5433 (not 5432)
 - **Flask is the gateway** — Dashboard and worker both talk to Flask, never directly to DB
+- **Flask needs `GITHUB_TOKEN`** — Set on production server for private repo access (downloads + updater + release API)
 - **SSE for real-time** — Worker broadcasts `post_published` events through Flask
 - **n8n role reduced** — Only handles AI content generation (called via webhook from Flask)
 - **Timezone** — Scheduling uses browser's local timezone, stored as UTC, worker uses `QALAM_TIMEZONE` env var
+- **GitHub repo** — Private. All download traffic goes through Flask proxy at `api.byqalam.com`
+- **Current version** — `1.1.1` (tauri.conf.json + Cargo.toml must stay in sync)
