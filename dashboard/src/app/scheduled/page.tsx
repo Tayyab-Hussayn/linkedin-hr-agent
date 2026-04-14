@@ -54,7 +54,7 @@ export default function ScheduledPage() {
   const [selectedTime, setSelectedTime] = useState('18:00')
   const [customTime, setCustomTime] = useState('')
   const [tick, setTick] = useState(0)
-  const { showToast, setScheduledCount } = useAppContext()
+  const { showToast, setScheduledCount, refreshSignal } = useAppContext()
 
   useSSE({
     onPostApproved: () => {
@@ -107,6 +107,10 @@ export default function ScheduledPage() {
     const interval = setInterval(() => setTick(t => t + 1), 60000)
     return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    if (refreshSignal > 0) fetchScheduledPosts()
+  }, [refreshSignal])
 
   const fetchScheduledPosts = async () => {
     setIsLoading(true)
