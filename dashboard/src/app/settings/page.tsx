@@ -3,11 +3,13 @@ import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
 import { auth } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
+import { useAppContext } from '@/context/AppContext'
 
 type Tab = 'account' | 'content'
 
 export default function SettingsPage() {
   const router = useRouter()
+  const { refreshSignal } = useAppContext()
   const [activeTab, setActiveTab] = useState<Tab>('account')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -44,6 +46,10 @@ export default function SettingsPage() {
     }
     loadProfile()
   }, [router])
+
+  useEffect(() => {
+    if (refreshSignal > 0) loadProfile()
+  }, [refreshSignal])
 
   const loadProfile = async () => {
     setLoading(true)
