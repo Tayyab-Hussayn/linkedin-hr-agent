@@ -15,7 +15,7 @@ export default function ContentPage() {
   const [mounted, setMounted] = useState(false)
   const [autoGenEnabled, setAutoGenEnabled] = useState(true)
   const [togglingAutoGen, setTogglingAutoGen] = useState(false)
-  const { showToast } = useAppContext()
+  const { showToast, refreshSignal } = useAppContext()
 
   useEffect(() => {
     setMounted(true)
@@ -34,6 +34,10 @@ export default function ContentPage() {
       document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [])
+
+  useEffect(() => {
+    if (refreshSignal > 0) fetchData()
+  }, [refreshSignal])
 
   const fetchStats = async () => {
     try {
