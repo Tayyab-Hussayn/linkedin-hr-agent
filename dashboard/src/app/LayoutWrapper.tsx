@@ -54,13 +54,15 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   })
 
   useEffect(() => {
+    if (isPublicPage) return
     // Fetch initial stats
     fetchStats()
     // Check for updates after 5 seconds
     setTimeout(checkForUpdates, 5000)
-  }, [])
+  }, [isPublicPage])
 
   useEffect(() => {
+    if (isPublicPage) return
     const handleOnline = () => fetchStats()
     const handleOffline = () => setIsOnline(false)
     window.addEventListener('online', handleOnline)
@@ -69,7 +71,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [])
+  }, [isPublicPage])
 
   const fetchStats = async () => {
     try {
@@ -86,6 +88,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   const handleRefresh = () => {
     fetchStats()
+    triggerRefresh()
   }
 
   const checkForUpdates = async () => {
