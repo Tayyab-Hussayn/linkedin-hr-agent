@@ -13,11 +13,15 @@ export default function AnalyticsPage() {
   const [dailyActivity, setDailyActivity] = useState<DailyActivity[]>([])
   const [recentPosts, setRecentPosts] = useState<Post[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const { showToast } = useAppContext()
+  const { showToast, refreshSignal } = useAppContext()
 
   useEffect(() => {
     fetchAnalytics()
   }, [])
+
+  useEffect(() => {
+    if (refreshSignal > 0) fetchAnalytics()
+  }, [refreshSignal])
 
   const fetchAnalytics = async () => {
     setIsLoading(true)
