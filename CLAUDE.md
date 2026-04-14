@@ -68,7 +68,7 @@ linkedin-hr-agent/
 │   │   │   ├── ui/            # PostCard, Toast, Sheet, SkeletonCard, etc.
 │   │   │   └── FeedbackBanner.tsx  # Star-rating widget (shown 30d after install)
 │   │   ├── context/
-│   │   │   └── AppContext.tsx  # Shared state: toasts, scheduled count, pulse
+│   │   │   └── AppContext.tsx  # Shared state: toasts, scheduled count, pulse, refreshSignal
 │   │   ├── hooks/
 │   │   │   ├── useToast.ts    # Legacy (toast now in AppContext)
 │   │   │   └── useSSE.ts      # Server-Sent Events hook
@@ -84,10 +84,9 @@ linkedin-hr-agent/
 │
 ├── playwright/
 │   ├── action_server.py       # Flask API server (ALL endpoints)
-│   ├── config.py              # DB_CONFIG, CLIENT_ID, JWT_SECRET
+│   ├── config.py              # DB_CONFIG, CLIENT_ID, JWT_SECRET (all from env vars)
 │   ├── linkedin_actions.py    # LinkedIn browser automation
 │   ├── queue_worker_v5.py     # Scheduled post publisher (uses Flask API)
-│   ├── queue_worker.py        # Legacy v4 (direct DB, deprecated)
 │   ├── prompt_builder.py      # AI prompt templates per niche
 │   ├── humanizer.py           # Delay/behavior utilities
 │   └── requirements.txt       # playwright, flask, requests, psycopg2, etc.
@@ -185,7 +184,7 @@ The Flask server is the **single API gateway**. All DB access goes through it.
 - `GET /api/stats` — Stats + plan info (pending, approved, published, generated_today, plan_name, etc.)
 - `POST /api/approve` — Approve/reject/edit a post (auto-computes scheduled_for if not provided)
 - `POST /api/publish-now` — Set scheduled_for to NOW() for immediate publishing
-- `POST /api/settings` — Update client settings (daily limit, publishing slots)
+- `POST /api/settings` — Update client settings (daily limit, publishing slots, auto_gen_enabled)
 - `GET /api/client-profile/<id>` — Get client profile with dynamic prompts
 - `PUT /api/client-profile/<id>` — Update client profile
 - `GET /api/niches` — Get available niches with defaults
@@ -274,7 +273,10 @@ Toasts are managed in `AppContext.tsx` (shared across all pages):
 ### SSE (Real-time Updates)
 - `useSSE` hook connects to `/api/events` endpoint
 - Events: `new_posts`, `post_approved`, `post_rejected`, `publish_now`, `post_published`
-- Used in LayoutWrapper (stats refresh), Queue, Scheduled pages
+- **Only used in LayoutWrapper** — pages use `refreshSignal` from AppContext instead of their own SSE connections
+- LayoutWrapper SSE callbacks call `triggerRefresh()` which increments `refreshSignal` counter
+- Pages (queue, scheduled, etc.) add `refreshSignal` to their useEffect dependency array to re-fetch on SSE events
+- Reconnect timer is tracked via `useRef` and cleaned up on unmount to prevent memory leaks
 
 ### Authentication
 - JWT tokens stored in localStorage (`postflow_token`, `postflow_user`)
@@ -296,15 +298,16 @@ This matches the login page input size and is the established pattern across all
 
 ## Queue Worker v5
 
-`queue_worker_v5.py` — Scheduled post publisher. Polls Flask API, publishes via Playwright.
+`queue_worker_v5.py` — Scheduled post publisher. Polls Flask API, publishes via Playwright. Legacy v4 (`queue_worker.py`) has been deleted.
 
-**Key differences from v4:**
-- No direct DB (psycopg2) — all operations through Flask API
+**Configuration:**
 - `QALAM_API_URL` env var (default: `http://localhost:5050`)
-- `QALAM_AUTH_TOKEN` env var for JWT authentication
+- `QALAM_AUTH_TOKEN` env var OR `PLAYWRIGHT_DIR/qalam_token.txt` file for JWT authentication
 - `QALAM_TIMEZONE` env var (default: `Asia/Karachi`)
 - `PLAYWRIGHT_DIR` relative to script location (no hardcoded path)
-- Validates LinkedIn credentials before launching Playwright
+- No direct DB access — all operations through Flask API
+
+**JWT handling:** Token is read dynamically on every API call via `get_auth_token()` — not cached at startup. This allows token refresh without restarting the worker. Checks env var first, then falls back to `qalam_token.txt` file. API 401 responses are logged with a clear message but don't crash the worker.
 
 **Flow:** Poll `/api/worker/due-posts` → lock via `/api/worker/mark-publishing` → run Playwright subprocess → report via `/api/worker/mark-published` or `/api/worker/mark-failed`
 
@@ -314,7 +317,7 @@ This matches the login page input size and is the established pattern across all
 
 Key tables:
 - **users** — Login credentials, JWT auth (email, password_hash, client_id, role)
-- **clients** — LinkedIn accounts (name, niche, linkedin_email/password, plan_id, publishing_slots)
+- **clients** — LinkedIn accounts (name, niche, linkedin_email/password, plan_id, publishing_slots, auto_gen_enabled)
 - **plans** — Subscription tiers (daily_post_limit, can_schedule, can_analytics, can_generate_now)
 - **client_effective_limits** — View joining clients + plans with COALESCE logic
 - **posts** — Content (content, topic_pillar, approval_status, post_status, scheduled_for, retry_count)
@@ -348,12 +351,13 @@ Tauri 2 wraps the Next.js dashboard as a native desktop app and bundles the queu
 - **System tray:** left-click or "Open Qalam" shows/focuses window; "Quit" exits. Window `CloseRequested` → hide (not quit)
 - **Autostart:** `tauri-plugin-autostart` enables login autostart on first run (`--minimized` flag passed)
 - **Watchdog:** `qalam-worker` runs inside an infinite `loop` in `async_runtime::spawn`. On crash/exit, waits 5s then restarts automatically. Log prefix: `[WATCHDOG]` / `[WORKER]` / `[WORKER ERR]`
+- **Debug output:** All `println!`/`eprintln!` calls use `debug_println!`/`debug_eprintln!` macros gated by `#[cfg(debug_assertions)]`. Release builds produce no stdout/stderr output. Both `lib.rs` and `script_updater.rs` use these macros.
 
 ### Environment variables passed to sidecar (lib.rs):
 | Var | Source | Purpose |
 |-----|--------|---------|
 | `QALAM_API_URL` | env or fallback `http://localhost:5050` | Flask API endpoint |
-| `QALAM_TIMEZONE` | hardcoded `Asia/Karachi` | Worker scheduling timezone |
+| `QALAM_TIMEZONE` | system TZ detection: `TZ` env → `/etc/timezone` → `UTC` fallback | Worker scheduling timezone |
 | `QALAM_RESOURCES_DIR` | `app.path().resource_dir()` | Dir containing `linkedin_actions.py` + `humanizer.py` |
 | `QALAM_PYTHON` | prefers `playwright/venv/bin/python`, falls back to `which python3` | Python interpreter for LinkedIn actions |
 
@@ -495,19 +499,41 @@ Uses Tauri's built-in updater with cryptographic signing.
 - **Notarization** — App is not notarized (no Apple Developer account). Users on macOS need to go to System Settings → Privacy & Security → Open Anyway on first launch.
 - **Apple Silicon only** — CI builds `aarch64-apple-darwin` only. Intel Mac users are not supported.
 
+## Server Environment Variables
+
+Production Flask server requires these env vars:
+
+| Variable | Purpose | Default (dev only) |
+|----------|---------|-------------------|
+| `JWT_SECRET` | JWT signing key | `postflow-dev-secret-change-in-production` (prints warning) |
+| `DB_HOST` | PostgreSQL host | `localhost` |
+| `DB_PORT` | PostgreSQL port | `5433` |
+| `DB_NAME` | Database name | `linkedin_agent` |
+| `DB_USER` | Database user | `hragent` |
+| `DB_PASSWORD` | Database password | `hragent123` |
+| `GITHUB_TOKEN` | GitHub PAT for private repo access | _(none — required for downloads/updater)_ |
+
+**Never commit real credentials.** `config.py` reads all secrets from env vars with dev-only fallbacks.
+
+## Database Connection Pooling
+
+`action_server.py` uses `psycopg2.pool.ThreadedConnectionPool` (min 2, max 10 connections). The pool is lazily initialized on first query via `get_db_pool()`. All queries go through `db_query()` which gets/returns connections from the pool.
+
 ## Important Notes
 
 - **Brand:** "Qalam" everywhere user-facing. Internal code may still reference "postflow" in localStorage keys.
-- **No hardcoded client IDs** — `getCurrentClientId()` returns null if not logged in
+- **No hardcoded client IDs** — `get_client_id()` returns `None` if no JWT present; endpoints return 401
 - **No console.log in production** — Only `console.error` for actual errors
 - **Dark theme only** — Use token classes, never hardcoded gray/white colors
 - **Input padding** — Always use `style={{ padding: '12px 16px', height: '44px' }}` on inputs; `py-*` classes are zeroed by globals.css
 - **Input borders** — Use `border-gray-200` (not `border-stroke`) for input fields; stroke is too faint
 - **PostgreSQL port** — 5433 (not 5432)
 - **Flask is the gateway** — Dashboard and worker both talk to Flask, never directly to DB
-- **Flask needs `GITHUB_TOKEN`** — Set on production server for private repo access (downloads + updater + release API)
-- **SSE for real-time** — Worker broadcasts `post_published` events through Flask
+- **SSE for real-time** — Only LayoutWrapper connects to SSE; pages react via `refreshSignal` from AppContext
+- **PWA/ServiceWorker** — Skipped inside Tauri (`__TAURI__` window check). Only active in browser deployments.
 - **n8n role reduced** — Only handles AI content generation (called via webhook from Flask)
-- **Timezone** — Scheduling uses browser's local timezone, stored as UTC, worker uses `QALAM_TIMEZONE` env var
+- **Timezone** — Tauri detects system timezone (`TZ` env → `/etc/timezone` → UTC); browser uses local timezone; worker uses `QALAM_TIMEZONE` env var
 - **GitHub repo** — Private. All download traffic goes through Flask proxy at `api.byqalam.com`
-- **Current version** — `1.1.1` (tauri.conf.json + Cargo.toml must stay in sync)
+- **Registration** — Does not set niche. Niche is configured during onboarding flow.
+- **Version sync** — `tauri.conf.json`, `Cargo.toml`, `errorReporter.ts`, and `LayoutWrapper.tsx` (`CURRENT_VERSION`) must all match
+- **Current version** — `1.2.0`
