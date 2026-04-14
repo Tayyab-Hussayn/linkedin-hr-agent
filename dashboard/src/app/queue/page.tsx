@@ -9,7 +9,6 @@ import { SkeletonCard } from '@/components/ui/SkeletonCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Sheet } from '@/components/ui/Sheet'
 import { useAppContext } from '@/context/AppContext'
-import { useSSE } from '@/hooks/useSSE'
 import Link from 'next/link'
 
 function getNextScheduleSlot(): Date {
@@ -40,24 +39,22 @@ export default function QueuePage() {
   const [editingPost, setEditingPost] = useState<Post | null>(null)
   const [editedContent, setEditedContent] = useState('')
   const [isSaving, setIsSaving] = useState(false)
-  const { showToast, triggerScheduledPulse, setScheduledCount } = useAppContext()
-
-  useSSE({
-    onNewPosts: () => {
-      // New posts generated — refresh queue
-      fetchData()
-    },
-    onPostApproved: () => {
-      // Post approved — refresh to remove from queue
-      fetchData()
-    },
-    onPostRejected: () => {
-      fetchData()
-    }
-  })
+  const { showToast, triggerScheduledPulse, setScheduledCount, refreshSignal } = useAppContext()
 
   useEffect(() => {
     fetchData()
+  }, [refreshSignal])
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (!document.hidden) fetchData()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('focus', fetchData)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('focus', fetchData)
+    }
   }, [])
 
   const fetchData = async () => {

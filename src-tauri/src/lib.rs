@@ -5,6 +5,22 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
 
+/// Print only in debug builds
+macro_rules! debug_println {
+    ($($arg:tt)*) => {
+        #[cfg(debug_assertions)]
+        println!($($arg)*);
+    };
+}
+
+/// Eprint only in debug builds
+macro_rules! debug_eprintln {
+    ($($arg:tt)*) => {
+        #[cfg(debug_assertions)]
+        eprintln!($($arg)*);
+    };
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -28,7 +44,7 @@ pub fn run() {
                 let autostart_manager = app.autolaunch();
                 if !autostart_manager.is_enabled().unwrap_or(false) {
                     let _ = autostart_manager.enable();
-                    println!("[AUTOSTART] Enabled autostart on login");
+                    debug_println!("[AUTOSTART] Enabled autostart on login");
                 }
             }
 
@@ -115,30 +131,40 @@ pub fn run() {
                 .to_string_lossy()
                 .to_string();
 
-            println!("[TAURI] API URL: {}", api_url);
-            println!("[TAURI] Python path: {}", python_path);
+            // Detect system timezone: TZ env → /etc/timezone → fallback UTC
+            let system_tz = std::env::var("TZ")
+                .or_else(|_| {
+                    std::fs::read_to_string("/etc/timezone")
+                        .map(|s| s.trim().to_string())
+                })
+                .unwrap_or_else(|_| "UTC".to_string());
+
+            debug_println!("[TAURI] API URL: {}", api_url);
+            debug_println!("[TAURI] Python path: {}", python_path);
+            debug_println!("[TAURI] Timezone: {}", system_tz);
 
             // ── STEP 4: Watchdog — restarts worker on crash ────────────────
             let app_handle_watchdog = app.handle().clone();
             let api_url_watchdog = api_url.clone();
             let python_path_watchdog = python_path.clone();
             let resources_dir_watchdog = resources_dir.clone();
+            let system_tz_watchdog = system_tz.clone();
 
             tauri::async_runtime::spawn(async move {
                 loop {
-                    println!("[WATCHDOG] Starting qalam-worker...");
+                    debug_println!("[WATCHDOG] Starting qalam-worker...");
 
                     match app_handle_watchdog.shell().sidecar("qalam-worker") {
                         Ok(cmd) => {
                             match cmd
                                 .env("QALAM_API_URL", &api_url_watchdog)
-                                .env("QALAM_TIMEZONE", "Asia/Karachi")
+                                .env("QALAM_TIMEZONE", &system_tz_watchdog)
                                 .env("QALAM_PYTHON", &python_path_watchdog)
                                 .env("QALAM_RESOURCES_DIR", &resources_dir_watchdog)
                                 .spawn()
                             {
                                 Ok((mut rx, child)) => {
-                                    println!(
+                                    debug_println!(
                                         "[WATCHDOG] Worker started (PID managed by Tauri)"
                                     );
 
@@ -147,7 +173,7 @@ pub fn run() {
                                             tauri_plugin_shell::process::CommandEvent::Stdout(
                                                 line,
                                             ) => {
-                                                println!(
+                                                debug_println!(
                                                     "[WORKER] {}",
                                                     String::from_utf8_lossy(&line)
                                                 );
@@ -155,7 +181,7 @@ pub fn run() {
                                             tauri_plugin_shell::process::CommandEvent::Stderr(
                                                 line,
                                             ) => {
-                                                eprintln!(
+                                                debug_eprintln!(
                                                     "[WORKER ERR] {}",
                                                     String::from_utf8_lossy(&line)
                                                 );
@@ -163,7 +189,7 @@ pub fn run() {
                                             tauri_plugin_shell::process::CommandEvent::Terminated(
                                                 status,
                                             ) => {
-                                                eprintln!(
+                                                debug_eprintln!(
                                                     "[WATCHDOG] Worker terminated: {:?}",
                                                     status
                                                 );
@@ -175,16 +201,16 @@ pub fn run() {
                                     drop(child);
                                 }
                                 Err(e) => {
-                                    eprintln!("[WATCHDOG] Failed to start worker: {}", e);
+                                    debug_eprintln!("[WATCHDOG] Failed to start worker: {}", e);
                                 }
                             }
                         }
                         Err(e) => {
-                            eprintln!("[WATCHDOG] Failed to create sidecar: {}", e);
+                            debug_eprintln!("[WATCHDOG] Failed to create sidecar: {}", e);
                         }
                     }
 
-                    println!("[WATCHDOG] Restarting worker in 5 seconds...");
+                    debug_println!("[WATCHDOG] Restarting worker in 5 seconds...");
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
             });

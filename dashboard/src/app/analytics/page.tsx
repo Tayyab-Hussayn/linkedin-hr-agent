@@ -8,7 +8,6 @@ import { calcHealthScore, generateInsight, getPillarColor, formatRelativeTime, g
 import { TrendingUp, AlertCircle, BarChart3 } from 'lucide-react'
 
 export default function AnalyticsPage() {
-  const [period, setPeriod] = useState<'week' | '30days' | 'all'>('week')
   const [stats, setStats] = useState<Stats | null>(null)
   const [pillarStats, setPillarStats] = useState<PillarStat[]>([])
   const [dailyActivity, setDailyActivity] = useState<DailyActivity[]>([])
@@ -18,7 +17,7 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     fetchAnalytics()
-  }, [period])
+  }, [])
 
   const fetchAnalytics = async () => {
     setIsLoading(true)
@@ -66,28 +65,7 @@ export default function AnalyticsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Analytics</h1>
-
-        {/* Period Selector */}
-        <div className="flex items-center gap-1 bg-surface rounded-lg border border-stroke p-1">
-          {[
-            { value: 'week', label: 'This Week' },
-            { value: '30days', label: '30 Days' },
-            { value: 'all', label: 'All Time' },
-          ].map((option) => (
-            <button
-              key={option.value}
-              onClick={() => setPeriod(option.value as any)}
-              className={cn(
-                'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
-                period === option.value
-                  ? 'accent-gradient text-bg'
-                  : 'text-muted hover:bg-surface-2'
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <span className="text-sm text-muted">All time</span>
       </div>
 
       {/* Health Banner */}
@@ -156,12 +134,19 @@ export default function AnalyticsPage() {
         <div className="space-y-4">
           {(() => {
             const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+            // Build lookup keyed by day abbreviation from API data
+            const dayLookup: Record<string, DailyActivity> = {}
+            for (const d of dailyActivity) {
+              if (d.day) dayLookup[d.day] = d
+            }
+
             const maxValue = dailyActivity.length > 0
               ? Math.max(...dailyActivity.map(d => (d.generated || 0) + (d.published || 0) + (d.rejected || 0)), 1)
               : 1
 
-            return days.map((day, index) => {
-              const dayData = dailyActivity[index]
+            return days.map((day) => {
+              const dayData = dayLookup[day]
               const generated = dayData?.generated || 0
               const published = dayData?.published || 0
               const rejected = dayData?.rejected || 0
@@ -303,36 +288,13 @@ export default function AnalyticsPage() {
         <h2 className="font-semibold text-lg mb-4">Post History</h2>
         <p className="text-sm text-muted mb-4">Complete history of all posts with their current status</p>
 
-        <HistorySection />
+        <HistorySection posts={recentPosts} />
       </div>
     </div>
   )
 }
 
-function HistorySection() {
-  const [historyPosts, setHistoryPosts] = useState<Post[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-
-  useEffect(() => {
-    fetchHistory()
-  }, [])
-
-  const fetchHistory = async () => {
-    setIsLoading(true)
-    try {
-      const posts = await api.getPosts('history', 20)
-      setHistoryPosts(posts)
-    } catch (error) {
-      console.error('Failed to load history:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  if (isLoading) {
-    return <div className="text-center py-8 text-muted">Loading history...</div>
-  }
-
+function HistorySection({ posts: historyPosts }: { posts: Post[] }) {
   if (historyPosts.length === 0) {
     return (
       <div className="text-center py-8">

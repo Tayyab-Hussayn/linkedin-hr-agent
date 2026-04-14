@@ -7,8 +7,15 @@ export default function PWAInstallPrompt() {
   const [isIOS, setIsIOS] = useState(false)
   const [isStandalone, setIsStandalone] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [isTauri, setIsTauri] = useState(false)
 
   useEffect(() => {
+    // Don't show in Tauri desktop app
+    if ('__TAURI__' in window) {
+      setIsTauri(true)
+      return
+    }
+
     // Check if mobile device
     const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
       || window.innerWidth < 768
@@ -33,7 +40,7 @@ export default function PWAInstallPrompt() {
     }
   }, [])
 
-  if (isStandalone || !showBanner || !isMobile) return null
+  if (isTauri || isStandalone || !showBanner || !isMobile) return null
 
   const handleInstall = async () => {
     if (deferredPrompt) {

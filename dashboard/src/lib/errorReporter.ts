@@ -1,4 +1,4 @@
-const APP_VERSION = '1.0.7'
+const APP_VERSION = '1.2.0'
 
 export async function reportError(
   message: string,

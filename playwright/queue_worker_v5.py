@@ -26,8 +26,7 @@ import zoneinfo
 API_BASE_URL = os.environ.get('QALAM_API_URL', 'http://localhost:5050')
 
 # AUTH_TOKEN: JWT token for authenticated API calls
-# Set by Tauri app after user logs in
-AUTH_TOKEN = os.environ.get('QALAM_AUTH_TOKEN', '')
+# Read dynamically on each request — supports token refresh without restart
 
 # PLAYWRIGHT_DIR: directory containing linkedin_actions.py
 # When running as PyInstaller bundle:
@@ -74,10 +73,25 @@ def warn(msg):  log('WARN',  msg)
 def error(msg): log('ERROR', msg)
 
 # ── API Client ─────────────────────────────────────────────────
+def get_auth_token():
+    """Read current JWT token - refreshed by Tauri on each login."""
+    token = os.environ.get('QALAM_AUTH_TOKEN', '')
+    if token:
+        return token
+
+    token_file = PLAYWRIGHT_DIR / 'qalam_token.txt'
+    if token_file.exists():
+        try:
+            return token_file.read_text().strip()
+        except Exception:
+            pass
+    return ''
+
 def api_headers():
     headers = {'Content-Type': 'application/json'}
-    if AUTH_TOKEN:
-        headers['Authorization'] = f'Bearer {AUTH_TOKEN}'
+    token = get_auth_token()
+    if token:
+        headers['Authorization'] = f'Bearer {token}'
     return headers
 
 def api_get(path):
@@ -88,6 +102,9 @@ def api_get(path):
             headers=api_headers(),
             timeout=30
         )
+        if r.status_code == 401:
+            error('API returned 401 — token expired or invalid. Re-open Qalam and log in again.')
+            return None
         r.raise_for_status()
         return r.json()
     except requests.exceptions.ConnectionError:
@@ -106,6 +123,9 @@ def api_post(path, data=None):
             json=data or {},
             timeout=30
         )
+        if r.status_code == 401:
+            error('API returned 401 — token expired or invalid. Re-open Qalam and log in again.')
+            return None
         r.raise_for_status()
         return r.json()
     except requests.exceptions.ConnectionError:

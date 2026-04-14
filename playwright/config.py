@@ -2,16 +2,18 @@
 # PostFlow Configuration — Single source of truth
 # ================================================================
 
+import os
+
 # Database
 DB_CONFIG = {
-    "host": "localhost",
-    "port": 5433,
-    "database": "linkedin_agent",
-    "user": "hragent",
-    "password": "hragent123"
+    "host": os.environ.get('DB_HOST', 'localhost'),
+    "port": int(os.environ.get('DB_PORT', '5433')),
+    "database": os.environ.get('DB_NAME', 'linkedin_agent'),
+    "user": os.environ.get('DB_USER', 'hragent'),
+    "password": os.environ.get('DB_PASSWORD', 'hragent123')
 }
 
-DB_URL = "postgresql://hragent:hragent123@localhost:5433/linkedin_agent"
+DB_URL = "postgresql://{user}:{password}@{host}:{port}/{database}".format(**DB_CONFIG)
 
 # App
 CLIENT_ID = "hr-pro-001"
@@ -36,5 +38,9 @@ QUEUE_RETRY_DELAYS = [10, 30]  # minutes
 DEFAULT_PUBLISHING_SLOTS = ["18:00"]
 
 # Auth
-JWT_SECRET = "postflow-super-secret-key-change-in-production"
+JWT_SECRET = os.environ.get('JWT_SECRET', 'postflow-dev-secret-change-in-production')
 JWT_EXPIRY_DAYS = 30
+
+if JWT_SECRET == 'postflow-dev-secret-change-in-production':
+    import sys
+    print("[WARNING] JWT_SECRET is using default dev value. Set JWT_SECRET env var in production.", file=sys.stderr)

@@ -30,6 +30,7 @@ export interface Stats {
   can_generate_now: boolean
   ai_model: string
   monthly_post_limit: number
+  auto_gen_enabled?: boolean
 }
 
 export interface PillarStat {

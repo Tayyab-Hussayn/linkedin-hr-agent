@@ -94,7 +94,7 @@ export function Sidebar({ pendingCount = 0, publishedCount = 0 }: SidebarProps) 
             </div>
             <div className="min-w-0">
               <p className="text-sm font-medium text-text-primary truncate">{user.name}</p>
-              <p className="text-xs text-muted">Free Plan</p>
+              <p className="text-xs text-muted">{typeof window !== 'undefined' ? localStorage.getItem('plan_name') || 'Free' : 'Free'} Plan</p>
             </div>
           </div>
         )}

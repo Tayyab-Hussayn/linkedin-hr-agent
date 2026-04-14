@@ -14,6 +14,7 @@ export default function ContentPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [mounted, setMounted] = useState(false)
   const [autoGenEnabled, setAutoGenEnabled] = useState(true)
+  const [togglingAutoGen, setTogglingAutoGen] = useState(false)
   const { showToast } = useAppContext()
 
   useEffect(() => {
@@ -38,6 +39,9 @@ export default function ContentPage() {
     try {
       const data = await api.getStats()
       setStats(data)
+      if (data.auto_gen_enabled !== undefined) {
+        setAutoGenEnabled(data.auto_gen_enabled)
+      }
       // Sync to localStorage as cache only
       localStorage.setItem('daily_post_limit', String(data.daily_post_limit))
       localStorage.setItem('plan_name', data.plan_name)
@@ -118,26 +122,6 @@ export default function ContentPage() {
     }
   }
 
-  const handleResetLimit = async () => {
-    try {
-      // Step 1: Delete today's posts from DB via n8n webhook
-      await api.resetDailyLimit()
-
-      // Step 2: Clear localStorage reset flags
-      localStorage.removeItem('limit_reset_date')
-      localStorage.removeItem('limit_reset_count')
-
-      // Step 3: Refetch fresh count from DB
-      await fetchData()
-
-      // Step 4: Show success toast
-      showToast('Daily limit reset — you can generate new posts', 'success')
-
-    } catch(e) {
-      showToast('Reset failed — try again', 'error')
-    }
-  }
-
   const { hours, minutes } = getNextGenerationTime()
   const isLimitReached = stats ? stats.generated_today >= stats.daily_post_limit : false
   const progress = stats ? (stats.generated_today / stats.daily_post_limit) * 100 : 0
@@ -174,8 +158,22 @@ export default function ContentPage() {
 
             {/* Toggle switch */}
             <button
-              onClick={() => setAutoGenEnabled(!autoGenEnabled)}
-              className="relative flex-shrink-0 cursor-pointer rounded-full focus:outline-none"
+              onClick={async () => {
+                const newVal = !autoGenEnabled
+                setTogglingAutoGen(true)
+                setAutoGenEnabled(newVal)
+                try {
+                  await api.updateClientSettings(undefined, { auto_gen_enabled: newVal } as any)
+                  showToast(newVal ? 'Auto-generation enabled' : 'Auto-generation paused', 'success')
+                } catch {
+                  setAutoGenEnabled(!newVal)
+                  showToast('Failed to update setting', 'error')
+                } finally {
+                  setTogglingAutoGen(false)
+                }
+              }}
+              disabled={togglingAutoGen}
+              className="relative flex-shrink-0 cursor-pointer rounded-full focus:outline-none disabled:opacity-50"
               style={{
                 width: '48px',
                 height: '24px',
@@ -239,18 +237,6 @@ export default function ContentPage() {
               }}
             />
           </div>
-          {isLimitReached && (
-            <button
-              onClick={handleResetLimit}
-              className="mt-2 flex items-center gap-1.5 text-xs text-muted
-                         hover:text-accent transition-colors cursor-pointer
-                         bg-surface-2 hover:bg-accent/5 px-3 py-1.5 rounded-full
-                         border border-stroke hover:border-blue-200"
-            >
-              <span>↺</span>
-              <span>Reset daily limit for testing</span>
-            </button>
-          )}
         </div>
 
         {/* Generate Now Button */}

@@ -5,6 +5,7 @@ import sys
 import signal
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 import urllib.request
 import random
 import jwt
@@ -41,11 +42,24 @@ def broadcast_event(event_type: str, data: dict):
         for q in dead:
             _sse_clients.remove(q)
 
+_db_pool = None
+
+def get_db_pool():
+    global _db_pool
+    if _db_pool is None:
+        _db_pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=2,
+            maxconn=10,
+            **DB_CONFIG
+        )
+    return _db_pool
+
 def db_query(sql, params=None, fetch=True):
-    """Execute a DB query and return results"""
-    conn = psycopg2.connect(**DB_CONFIG)
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    """Execute a DB query using connection pool"""
+    pool = get_db_pool()
+    conn = pool.getconn()
     try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(sql, params or [])
         if fetch:
             result = cur.fetchall()
@@ -56,7 +70,7 @@ def db_query(sql, params=None, fetch=True):
             return cur.rowcount
     finally:
         cur.close()
-        conn.close()
+        pool.putconn(conn)
 
 def cors_response(data, status=200):
     """Return JSON response with CORS headers"""
@@ -105,13 +119,12 @@ def get_current_user():
 
 def get_client_id():
     """
-    Get client_id from JWT token if present,
-    fall back to hardcoded CLIENT_ID for compatibility.
+    Get client_id from JWT token. Returns None if no valid JWT present.
     """
     user = get_current_user()
     if user and user.get('client_id'):
         return user['client_id']
-    return CLIENT_ID
+    return None
 
 def require_auth(f):
     """Decorator to protect endpoints with JWT auth."""
@@ -498,6 +511,8 @@ def sse_stream():
 def get_posts():
     status = request.args.get('status', 'queue')
     client_id = request.args.get('client_id') or get_client_id()
+    if not client_id:
+        return cors_response({"status": "error", "message": "Unauthorized — valid token required"}, 401)
     limit = int(request.args.get('limit', 20))
 
     if status == 'stats':
@@ -579,11 +594,26 @@ def get_stats_internal(client_id=None):
 
     data = rows[0]
     data['type'] = 'stats'
+
+    # Fetch auto_gen_enabled from clients table (may not exist in view)
+    try:
+        auto_gen_rows = db_query(
+            "SELECT auto_gen_enabled FROM clients WHERE id = %s", [cid]
+        )
+        if auto_gen_rows:
+            data['auto_gen_enabled'] = auto_gen_rows[0].get('auto_gen_enabled', True)
+        else:
+            data['auto_gen_enabled'] = True
+    except Exception:
+        data['auto_gen_enabled'] = True
+
     return cors_response(data)
 
 @app.route('/api/stats', methods=['GET', 'OPTIONS'])
 def get_stats():
     client_id = request.args.get('client_id') or get_client_id()
+    if not client_id:
+        return cors_response({"status": "error", "message": "Unauthorized — valid token required"}, 401)
     return get_stats_internal(client_id)
 
 # ═══════════════════════════════════════════
@@ -763,6 +793,8 @@ def publish_now():
 def update_settings():
     body = request.get_json() or {}
     client_id = body.get('client_id') or get_client_id()
+    if not client_id:
+        return cors_response({"status": "error", "message": "Unauthorized — valid token required"}, 401)
     daily_post_limit = body.get('daily_post_limit')
     publishing_slots = body.get('publishing_slots')
 
@@ -777,6 +809,11 @@ def update_settings():
         updates.append("publishing_slots = %s")
         slots = publishing_slots if isinstance(publishing_slots, str) else json.dumps(publishing_slots)
         params.append(slots)
+
+    auto_gen_enabled = body.get('auto_gen_enabled')
+    if auto_gen_enabled is not None:
+        updates.append("auto_gen_enabled = %s")
+        params.append(bool(auto_gen_enabled))
 
     if not updates:
         return cors_response({"status": "error", "message": "Nothing to update"}, 400)
@@ -799,6 +836,8 @@ def update_settings():
 def generate_now():
     body = request.get_json() or {}
     client_id = body.get('client_id') or get_client_id()
+    if not client_id:
+        return cors_response({"status": "error", "message": "Unauthorized — valid token required"}, 401)
 
     payload = json.dumps({"client_id": client_id}).encode()
     req = urllib.request.Request(

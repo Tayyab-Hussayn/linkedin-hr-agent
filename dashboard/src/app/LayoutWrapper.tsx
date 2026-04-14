@@ -22,7 +22,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     version: string
     downloadUrl: string
   } | null>(null)
-  const { toasts, dismissToast, setScheduledCount } = useAppContext()
+  const { toasts, dismissToast, setScheduledCount, triggerRefresh } = useAppContext()
 
   // Pages that don't need auth
   const publicPages = ['/login', '/register', '/onboarding']
@@ -37,15 +37,19 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   useSSE({
     onNewPosts: () => {
       fetchStats() // Update pending count in sidebar
+      triggerRefresh() // Signal pages to re-fetch
     },
     onPostApproved: () => {
       fetchStats() // Update scheduled count
+      triggerRefresh()
     },
     onPostRejected: () => {
       fetchStats()
+      triggerRefresh()
     },
     onPublishNow: () => {
       fetchStats()
+      triggerRefresh()
     }
   })
 
@@ -99,7 +103,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       const data = await res.json()
 
       // Current app version — update this when releasing
-      const CURRENT_VERSION = '1.0.7'
+      const CURRENT_VERSION = '1.2.0'
 
       localStorage.setItem('qalam_update_check', now.toString())
 

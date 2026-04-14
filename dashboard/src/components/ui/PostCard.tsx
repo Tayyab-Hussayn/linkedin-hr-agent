@@ -132,9 +132,24 @@ export function PostCard({
   }
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(post.content)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    try {
+      await navigator.clipboard.writeText(post.content)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      try {
+        const textarea = document.createElement('textarea')
+        textarea.value = post.content
+        document.body.appendChild(textarea)
+        textarea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textarea)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      } catch {
+        // Silent fail
+      }
+    }
   }
 
   // Extract hook (first line or first sentence)

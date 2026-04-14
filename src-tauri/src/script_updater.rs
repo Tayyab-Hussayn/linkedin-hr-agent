@@ -4,6 +4,14 @@ use sha2::{Sha256, Digest};
 
 const VERSION_FILE: &str = "linkedin_actions_version.txt";
 
+/// Print only in debug builds
+macro_rules! debug_println {
+    ($($arg:tt)*) => {
+        #[cfg(debug_assertions)]
+        println!($($arg)*);
+    };
+}
+
 #[derive(serde::Deserialize)]
 struct VersionInfo {
     version: String,
@@ -25,7 +33,7 @@ pub fn save_local_version(resources_dir: &PathBuf, version: &str) {
 
 pub fn check_and_update(resources_dir: PathBuf, api_base: String) {
     std::thread::spawn(move || {
-        println!("[UPDATER] Checking for script updates...");
+        debug_println!("[UPDATER] Checking for script updates...");
 
         let version_url = format!("{}/updater/version.json", api_base);
         let client = match reqwest::blocking::Client::builder()
@@ -34,7 +42,7 @@ pub fn check_and_update(resources_dir: PathBuf, api_base: String) {
         {
             Ok(c) => c,
             Err(e) => {
-                println!("[UPDATER] Failed to build HTTP client: {}", e);
+                debug_println!("[UPDATER] Failed to build HTTP client: {}", e);
                 return;
             }
         };
@@ -43,12 +51,12 @@ pub fn check_and_update(resources_dir: PathBuf, api_base: String) {
             Ok(resp) => match resp.json::<VersionInfo>() {
                 Ok(info) => info,
                 Err(e) => {
-                    println!("[UPDATER] Failed to parse version info: {}", e);
+                    debug_println!("[UPDATER] Failed to parse version info: {}", e);
                     return;
                 }
             },
             Err(e) => {
-                println!("[UPDATER] Cannot reach update server: {}", e);
+                debug_println!("[UPDATER] Cannot reach update server: {}", e);
                 return;
             }
         };
@@ -56,11 +64,11 @@ pub fn check_and_update(resources_dir: PathBuf, api_base: String) {
         let local_version = get_local_version(&resources_dir);
 
         if local_version == remote_info.version {
-            println!("[UPDATER] Script is up to date (v{})", local_version);
+            debug_println!("[UPDATER] Script is up to date (v{})", local_version);
             return;
         }
 
-        println!(
+        debug_println!(
             "[UPDATER] Update available: {} -> {}",
             local_version, remote_info.version
         );
@@ -70,12 +78,12 @@ pub fn check_and_update(resources_dir: PathBuf, api_base: String) {
             Ok(resp) => match resp.bytes() {
                 Ok(bytes) => bytes,
                 Err(e) => {
-                    println!("[UPDATER] Download failed: {}", e);
+                    debug_println!("[UPDATER] Download failed: {}", e);
                     return;
                 }
             },
             Err(e) => {
-                println!("[UPDATER] Download request failed: {}", e);
+                debug_println!("[UPDATER] Download request failed: {}", e);
                 return;
             }
         };
@@ -85,7 +93,7 @@ pub fn check_and_update(resources_dir: PathBuf, api_base: String) {
         let checksum = hex::encode(hasher.finalize());
 
         if checksum != remote_info.checksum {
-            println!("[UPDATER] Checksum mismatch - aborting update");
+            debug_println!("[UPDATER] Checksum mismatch - aborting update");
             return;
         }
 
@@ -93,10 +101,10 @@ pub fn check_and_update(resources_dir: PathBuf, api_base: String) {
         match fs::write(&script_path, &content) {
             Ok(_) => {
                 save_local_version(&resources_dir, &remote_info.version);
-                println!("[UPDATER] Script updated to v{}", remote_info.version);
+                debug_println!("[UPDATER] Script updated to v{}", remote_info.version);
             }
             Err(e) => {
-                println!("[UPDATER] Failed to write script: {}", e);
+                debug_println!("[UPDATER] Failed to write script: {}", e);
             }
         }
     });

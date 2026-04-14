@@ -319,19 +319,19 @@ export const api = {
   // Update client settings in DB
   updateClientSettings: async (
     clientId?: string,
-    settings: { daily_post_limit?: number; publishing_slots?: string[] } = {}
+    settings: { daily_post_limit?: number; publishing_slots?: string[]; auto_gen_enabled?: boolean } = {}
   ) => {
     const cid = clientId || getCurrentClientId()
     if (!cid) return { status: 'error', message: 'Not authenticated' }
     try {
+      const payload: Record<string, unknown> = { client_id: cid }
+      if (settings.daily_post_limit !== undefined) payload.daily_post_limit = settings.daily_post_limit
+      if (settings.publishing_slots !== undefined) payload.publishing_slots = settings.publishing_slots
+      if (settings.auto_gen_enabled !== undefined) payload.auto_gen_enabled = settings.auto_gen_enabled
       const res = await apiFetch(`${getApiUrl()}/api/settings`, {
         method: 'POST',
         headers: getHeaders(),
-        body: JSON.stringify({
-          client_id: cid,
-          daily_post_limit: settings.daily_post_limit,
-          publishing_slots: settings.publishing_slots
-        })
+        body: JSON.stringify(payload)
       })
       const text = await res.text()
       if (!text || text.trim() === '') return { status: 'ok' }
@@ -379,7 +379,7 @@ export const api = {
     }
   },
 
-  async register(data: { name: string, email: string, password: string, niche: string }) {
+  async register(data: { name: string, email: string, password: string, niche?: string }) {
     try {
       const res = await fetch(`${getApiUrl()}/auth/register`, {
         method: 'POST',

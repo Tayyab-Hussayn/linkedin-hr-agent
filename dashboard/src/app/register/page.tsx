@@ -31,7 +31,7 @@ export default function RegisterPage() {
     setLoading(true)
     try {
       const res = await api.register({
-        name, email, password, niche: 'hr_professional'
+        name, email, password
       })
       if (res.status === 'ok') {
         auth.setToken(res.token, {

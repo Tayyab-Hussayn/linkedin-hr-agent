@@ -17,6 +17,7 @@ type SSEHandlers = {
 
 export function useSSE(handlers: SSEHandlers) {
   const esRef = useRef<EventSource | null>(null)
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const handlersRef = useRef(handlers)
   handlersRef.current = handlers
 
@@ -64,8 +65,8 @@ export function useSSE(handlers: SSEHandlers) {
     es.onerror = () => {
       es.close()
       esRef.current = null
-      // Reconnect after 5 seconds
-      setTimeout(connect, 5000)
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
+      reconnectTimer.current = setTimeout(connect, 5000)
     }
   }, [])
 
@@ -74,6 +75,7 @@ export function useSSE(handlers: SSEHandlers) {
     return () => {
       esRef.current?.close()
       esRef.current = null
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
     }
   }, [connect])
 }

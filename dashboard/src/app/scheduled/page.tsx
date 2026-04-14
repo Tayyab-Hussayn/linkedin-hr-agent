@@ -142,13 +142,16 @@ export default function ScheduledPage() {
       await api.submitDecision(postId, 'rejected')
 
       setTimeout(() => {
-        setPosts(prev => prev.filter(p => p.id !== postId))
+        setPosts(prev => {
+          const filtered = prev.filter(p => p.id !== postId)
+          setScheduledCount(filtered.length)
+          return filtered
+        })
         setRemovingIds(prev => {
           const next = new Set(prev)
           next.delete(postId)
           return next
         })
-        setScheduledCount(posts.length - 1)
       }, 300)
 
       showToast('Post removed from schedule', 'warning')

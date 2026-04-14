@@ -33,6 +33,7 @@ export const auth = {
     localStorage.removeItem('api_url')
     localStorage.removeItem('publishing_slots')
     localStorage.removeItem('posts_per_page')
+    localStorage.removeItem('n8n_url')
     window.location.href = '/login'
   },
 
