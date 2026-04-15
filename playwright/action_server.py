@@ -1388,6 +1388,8 @@ def report_error():
     body = request.get_json() or {}
     user = get_current_user()
     client_id = user.get('client_id') if user else 'anonymous'
+    app_version = str(body.get('app_version', 'unknown'))[:100]
+    os_info = str(body.get('os_info', 'unknown'))[:100]
 
     db_query("""
         INSERT INTO feedback
@@ -1397,8 +1399,8 @@ def report_error():
         client_id,
         body.get('message', 'Unknown error'),
         json.dumps(body.get('details', {})),
-        body.get('app_version', 'unknown'),
-        body.get('os_info', 'unknown')
+        app_version,
+        os_info
     ], fetch=False)
 
     return cors_response({'status': 'ok'})

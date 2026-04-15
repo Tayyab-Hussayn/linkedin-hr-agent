@@ -106,7 +106,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       const data = await res.json()
 
       // Current app version — update this when releasing
-      const CURRENT_VERSION = '1.2.0'
+      const CURRENT_VERSION = '1.2.1'
 
       localStorage.setItem('qalam_update_check', now.toString())
 

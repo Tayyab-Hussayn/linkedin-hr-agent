@@ -45,15 +45,9 @@ function getCurrentClientId(): string | null {
 }
 
 async function apiFetch(url: string, options?: RequestInit): Promise<Response> {
+  let res: Response
   try {
-    const res = await fetch(url, options)
-    if (res.status === 401) {
-      localStorage.removeItem('postflow_token')
-      localStorage.removeItem('postflow_user')
-      window.location.href = '/login'
-      throw new Error('Session expired')
-    }
-    return res
+    res = await fetch(url, options)
   } catch (error) {
     reportError('API fetch failed', {
       url,
@@ -61,6 +55,15 @@ async function apiFetch(url: string, options?: RequestInit): Promise<Response> {
     })
     throw error
   }
+
+  if (res.status === 401) {
+    localStorage.removeItem('postflow_token')
+    localStorage.removeItem('postflow_user')
+    window.location.href = '/login'
+    throw new Error('Session expired')
+  }
+
+  return res
 }
 
 export const api = {

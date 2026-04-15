@@ -1,9 +1,12 @@
-const APP_VERSION = '1.2.0'
+import { auth } from './auth'
+
+const APP_VERSION = '1.2.1'
 
 export async function reportError(
   message: string,
   details: Record<string, unknown> = {}
 ) {
+  if (!auth.isLoggedIn()) return
   try {
     const apiUrl =
       (typeof window !== 'undefined' && localStorage.getItem('api_url')) ||

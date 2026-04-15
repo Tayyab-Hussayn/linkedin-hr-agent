@@ -2,11 +2,35 @@
 
 This file provides guidance to Claude Code when working with code in this repository.
 
+## Superpowers Workflow Rule
+
+Use the Superpowers workflow only when the task justifies it. Default is to skip it for simple work.
+
+**Skip the workflow for:**
+- Single-file edits (typos, renaming, small UI tweaks)
+- Straightforward bug fixes with an obvious cause
+- Config or copy changes
+- Anything where the solution is already clear and low-risk
+
+**Use the workflow for:**
+- New features that touch multiple files or components
+- Architectural changes (DB schema, auth, API design, queue system)
+- Tasks that have already gone wrong once and risk re-correction loops
+- Anything that affects how core systems interact
+
+**When triggered, order of operations:**
+1. `superpowers:brainstorming` — validate intent, surface edge cases
+2. `superpowers:test-driven-development` — define tests before implementation
+3. Implement
+4. `superpowers:verification-before-completion` — confirm before claiming done
+
+**Rule of thumb:** If the task can be described in one sentence and touches one file — just do it. If it requires explaining the approach first — run the workflow.
+
 ## Project Overview
 
 **Qalam** — LinkedIn content automation SaaS. Users connect their LinkedIn account, AI generates posts, users approve/schedule via dashboard, and posts are published automatically.
 
-**Brand:** Qalam (formerly PostFlow). All user-facing references use "Qalam".
+**Brand:** Qalam. All user-facing references use "Qalam".
 
 ## Architecture
 
@@ -38,14 +62,14 @@ Flask API Server
 - **PostgreSQL** — Data storage (Docker container `la_postgres`, port 5433)
 - **Playwright** — Browser automation for LinkedIn posting
 - **Queue Worker v5** — Polls Flask API for due posts, runs Playwright to publish (also bundled as `qalam-worker` sidecar)
-- **n8n** — AI content generation only (called via webhook from Flask)
-- **Ollama** — Local AI model for content generation
+- **n8n** — AI content generation pipeline (called via webhook from Flask)
+- **Ollama** — Cloud API for content generation, called by n8n. **Local Ollama models are not used.** Future plan: migrate to paid models (Claude, Gemini, ChatGPT) via direct API keys.
 
 ### What's NOT in the stack:
 - ❌ Direct DB access from frontend (uses Flask API)
 - ❌ SQLAlchemy/Alembic (plain SQL only)
 - ❌ Redis
-- ❌ pg package in frontend (removed)
+- ❌ Local Ollama models (cloud API only)
 
 ## Directory Structure
 
@@ -217,8 +241,7 @@ The Flask server is the **single API gateway**. All DB access goes through it.
 - `POST /api/feedback/rating` — User 1-5 star rating + optional message
 - `GET /api/feedback/all` — Admin view, last 100 feedback rows
 
-### Legacy Endpoints
-- `POST /execute` — Direct Playwright execution (used by n8n)
+### Health
 - `GET /health` — Health check
 
 ## Dashboard (Next.js 14)
@@ -274,12 +297,12 @@ Toasts are managed in `AppContext.tsx` (shared across all pages):
 - `useSSE` hook connects to `/api/events` endpoint
 - Events: `new_posts`, `post_approved`, `post_rejected`, `publish_now`, `post_published`
 - **Only used in LayoutWrapper** — pages use `refreshSignal` from AppContext instead of their own SSE connections
-- LayoutWrapper SSE callbacks call `triggerRefresh()` which increments `refreshSignal` counter
-- Pages (queue, scheduled, etc.) add `refreshSignal` to their useEffect dependency array to re-fetch on SSE events
+- Both SSE callbacks and the manual refresh button call `triggerRefresh()` which increments `refreshSignal` counter
+- All pages (queue, scheduled, content, analytics, settings) add `refreshSignal` to a dedicated useEffect to re-fetch their data — do NOT modify existing mount/polling effects, add a separate one
 - Reconnect timer is tracked via `useRef` and cleaned up on unmount to prevent memory leaks
 
 ### Authentication
-- JWT tokens stored in localStorage (`postflow_token`, `postflow_user`)
+- JWT tokens stored in localStorage (`postflow_token`, `postflow_user`) — **do NOT rename these keys; existing installs depend on them**
 - `auth.ts` provides `isLoggedIn()`, `getUser()`, `logout()`
 - Protected pages redirect to `/login` if no valid token
 - Public pages: `/login`, `/register`, `/onboarding`
@@ -298,7 +321,7 @@ This matches the login page input size and is the established pattern across all
 
 ## Queue Worker v5
 
-`queue_worker_v5.py` — Scheduled post publisher. Polls Flask API, publishes via Playwright. Legacy v4 (`queue_worker.py`) has been deleted.
+`queue_worker_v5.py` — Scheduled post publisher. Polls Flask API, publishes via Playwright.
 
 **Configuration:**
 - `QALAM_API_URL` env var (default: `http://localhost:5050`)
@@ -505,7 +528,7 @@ Production Flask server requires these env vars:
 
 | Variable | Purpose | Default (dev only) |
 |----------|---------|-------------------|
-| `JWT_SECRET` | JWT signing key | `postflow-dev-secret-change-in-production` (prints warning) |
+| `JWT_SECRET` | JWT signing key | `qalam-dev-secret-change-in-production` (prints warning) |
 | `DB_HOST` | PostgreSQL host | `localhost` |
 | `DB_PORT` | PostgreSQL port | `5433` |
 | `DB_NAME` | Database name | `linkedin_agent` |
@@ -521,7 +544,7 @@ Production Flask server requires these env vars:
 
 ## Important Notes
 
-- **Brand:** "Qalam" everywhere user-facing. Internal code may still reference "postflow" in localStorage keys.
+- **Brand:** "Qalam" everywhere user-facing. localStorage keys remain `postflow_token` / `postflow_user` — **do NOT rename them**, existing installs depend on these exact key names.
 - **No hardcoded client IDs** — `get_client_id()` returns `None` if no JWT present; endpoints return 401
 - **No console.log in production** — Only `console.error` for actual errors
 - **Dark theme only** — Use token classes, never hardcoded gray/white colors

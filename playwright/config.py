@@ -1,5 +1,5 @@
 # ================================================================
-# PostFlow Configuration — Single source of truth
+# Qalam Configuration — Single source of truth
 # ================================================================
 
 import os
@@ -38,9 +38,9 @@ QUEUE_RETRY_DELAYS = [10, 30]  # minutes
 DEFAULT_PUBLISHING_SLOTS = ["18:00"]
 
 # Auth
-JWT_SECRET = os.environ.get('JWT_SECRET', 'postflow-dev-secret-change-in-production')
+JWT_SECRET = os.environ.get('JWT_SECRET', 'qalam-dev-secret-change-in-production')
 JWT_EXPIRY_DAYS = 30
 
-if JWT_SECRET == 'postflow-dev-secret-change-in-production':
+if JWT_SECRET == 'qalam-dev-secret-change-in-production':
     import sys
     print("[WARNING] JWT_SECRET is using default dev value. Set JWT_SECRET env var in production.", file=sys.stderr)
