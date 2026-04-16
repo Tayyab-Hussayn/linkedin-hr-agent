@@ -448,12 +448,25 @@ async def do_react(page, post_url: str, reaction: str = "like") -> str:
 
 # ─── Entry Point ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(json.dumps({"status": "error", "message": "No args provided"}))
+    # Prefer stdin (secure — no creds in `ps aux`); fall back to argv for dev.
+    raw_payload = None
+    try:
+        if not sys.stdin.isatty():
+            data = sys.stdin.read().strip()
+            if data:
+                raw_payload = data
+        if raw_payload is None and len(sys.argv) > 1:
+            raw_payload = sys.argv[1]
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": f"Failed to read payload: {str(e)}"}))
+        sys.exit(1)
+
+    if not raw_payload:
+        print(json.dumps({"status": "error", "message": "No payload provided"}))
         sys.exit(1)
 
     try:
-        args = json.loads(sys.argv[1])
+        args = json.loads(raw_payload)
         asyncio.run(run(args))
     except json.JSONDecodeError as e:
         print(json.dumps({"status": "error", "message": f"Invalid JSON args: {str(e)}"}))

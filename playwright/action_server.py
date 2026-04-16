@@ -22,6 +22,19 @@ signal.signal(signal.SIGCHLD, signal.SIG_DFL)
 
 app = Flask(__name__)
 
+ALLOWED_ORIGINS = {
+    "https://app.byqalam.com",
+    "https://www.byqalam.com",
+    "https://byqalam.com",
+    "http://localhost:3000",
+    "http://tauri.localhost",  # windows tauri dev
+    "tauri://localhost",        # linux/mac tauri
+}
+
+def _allowed_origin():
+    origin = request.headers.get('Origin', '')
+    return origin if origin in ALLOWED_ORIGINS else ''
+
 # SSE event broadcaster
 _sse_clients: list = []
 _sse_lock = threading.Lock()
@@ -73,11 +86,15 @@ def db_query(sql, params=None, fetch=True):
         pool.putconn(conn)
 
 def cors_response(data, status=200):
-    """Return JSON response with CORS headers"""
+    """Return JSON response with CORS headers restricted to known origins."""
     response = jsonify(data)
-    response.headers['Access-Control-Allow-Origin'] = '*'
+    origin = _allowed_origin()
+    if origin:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Vary'] = 'Origin'
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
     return response, status
 
 # ================================================================
@@ -143,12 +160,16 @@ def require_auth(f):
 
 @app.before_request
 def handle_options():
-    """Handle OPTIONS preflight requests"""
+    """Handle OPTIONS preflight requests — allow-listed origins only."""
     if request.method == 'OPTIONS':
         response = jsonify({})
-        response.headers['Access-Control-Allow-Origin'] = '*'
+        origin = _allowed_origin()
+        if origin:
+            response.headers['Access-Control-Allow-Origin'] = origin
+            response.headers['Vary'] = 'Origin'
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
         return response, 200
 
 # ================================================================
@@ -373,11 +394,10 @@ def update_post_status(post_id, status):
         print(f"[DB ERROR] {str(e)}", file=sys.stderr)
 
 @app.route('/execute', methods=['POST'])
+@require_auth
 def execute():
-    # Log the full incoming request
-    print(f"[REQUEST] Method: {request.method}", file=sys.stderr)
-    print(f"[REQUEST] Headers: {dict(request.headers)}", file=sys.stderr)
-    print(f"[REQUEST] Raw body: {request.get_data(as_text=True)}", file=sys.stderr)
+    # Do NOT log headers or raw body — contains bearer tokens and linkedin creds.
+    print(f"[REQUEST] /execute method={request.method} len={request.content_length}", file=sys.stderr)
 
     try:
         payload = request.get_json()
@@ -391,13 +411,15 @@ def execute():
         if post_id and payload.get('action') == 'post':
             update_post_status(post_id, 'publishing')
 
-        # Run linkedin_actions.py with the payload
+        # Run linkedin_actions.py with the payload (stdin — no creds in argv/`ps`).
+        playwright_dir = os_module.path.dirname(os_module.path.abspath(__file__))
         result = subprocess.run(
-            ['python', 'linkedin_actions.py', json.dumps(payload)],
+            [sys.executable, 'linkedin_actions.py'],
+            input=json.dumps(payload),
             capture_output=True,
             text=True,
-            timeout=None,
-            cwd='/home/krawin/exp.code/linkedin-hr-agent/playwright'
+            timeout=300,
+            cwd=playwright_dir
         )
 
         # Parse stdout for status updates
@@ -461,7 +483,10 @@ def sse_stream():
     """Server-Sent Events endpoint for real-time updates."""
     if request.method == 'OPTIONS':
         response = jsonify({})
-        response.headers['Access-Control-Allow-Origin'] = '*'
+        origin = _allowed_origin()
+        if origin:
+            response.headers['Access-Control-Allow-Origin'] = origin
+            response.headers['Vary'] = 'Origin'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
         return response, 200
 
@@ -498,7 +523,10 @@ def sse_stream():
     )
     response.headers['Cache-Control'] = 'no-cache'
     response.headers['X-Accel-Buffering'] = 'no'
-    response.headers['Access-Control-Allow-Origin'] = '*'
+    origin = _allowed_origin()
+    if origin:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Vary'] = 'Origin'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
     return response
 
@@ -508,11 +536,10 @@ def sse_stream():
 # ═══════════════════════════════════════════
 
 @app.route('/api/posts', methods=['GET', 'OPTIONS'])
+@require_auth
 def get_posts():
     status = request.args.get('status', 'queue')
-    client_id = request.args.get('client_id') or get_client_id()
-    if not client_id:
-        return cors_response({"status": "error", "message": "Unauthorized — valid token required"}, 401)
+    client_id = request.current_user['client_id']
     limit = int(request.args.get('limit', 20))
 
     if status == 'stats':
@@ -610,10 +637,9 @@ def get_stats_internal(client_id=None):
     return cors_response(data)
 
 @app.route('/api/stats', methods=['GET', 'OPTIONS'])
+@require_auth
 def get_stats():
-    client_id = request.args.get('client_id') or get_client_id()
-    if not client_id:
-        return cors_response({"status": "error", "message": "Unauthorized — valid token required"}, 401)
+    client_id = request.current_user['client_id']
     return get_stats_internal(client_id)
 
 # ═══════════════════════════════════════════
@@ -653,6 +679,7 @@ def compute_next_slot(client_id):
     return datetime.fromisoformat(f"{tomorrow_str}T{slots[0]}:00+05:00").isoformat()
 
 @app.route('/api/approve', methods=['POST', 'OPTIONS'])
+@require_auth
 def approve_post():
     body = request.get_json() or {}
     post_id = body.get('post_id')
@@ -751,6 +778,7 @@ def approve_post():
 # ═══════════════════════════════════════════
 
 @app.route('/api/publish-now', methods=['POST', 'OPTIONS'])
+@require_auth
 def publish_now():
     body = request.get_json() or {}
     post_id = body.get('post_id')
@@ -790,11 +818,10 @@ def publish_now():
 # ═══════════════════════════════════════════
 
 @app.route('/api/settings', methods=['POST', 'OPTIONS'])
+@require_auth
 def update_settings():
     body = request.get_json() or {}
-    client_id = body.get('client_id') or get_client_id()
-    if not client_id:
-        return cors_response({"status": "error", "message": "Unauthorized — valid token required"}, 401)
+    client_id = request.current_user['client_id']
     daily_post_limit = body.get('daily_post_limit')
     publishing_slots = body.get('publishing_slots')
 
@@ -833,11 +860,9 @@ def update_settings():
 # ═══════════════════════════════════════════
 
 @app.route('/api/generate-now', methods=['POST', 'OPTIONS'])
+@require_auth
 def generate_now():
-    body = request.get_json() or {}
-    client_id = body.get('client_id') or get_client_id()
-    if not client_id:
-        return cors_response({"status": "error", "message": "Unauthorized — valid token required"}, 401)
+    client_id = request.current_user['client_id']
 
     payload = json.dumps({"client_id": client_id}).encode()
     req = urllib.request.Request(
@@ -858,7 +883,10 @@ def generate_now():
 # ═══════════════════════════════════════════
 
 @app.route('/api/client-profile/<client_id>', methods=['GET', 'OPTIONS'])
+@require_auth
 def get_client_profile(client_id):
+    if request.current_user['client_id'] != client_id and request.current_user.get('role') != 'admin':
+        return cors_response({'status': 'error', 'message': 'Forbidden'}, 403)
     rows = db_query("""
         SELECT
             c.*,
@@ -915,6 +943,7 @@ def get_client_profile(client_id):
 # ═══════════════════════════════════════════
 
 @app.route('/api/niches', methods=['GET', 'OPTIONS'])
+@require_auth
 def get_niches():
     return cors_response({
         "status": "ok",
@@ -927,7 +956,10 @@ def get_niches():
 # ═══════════════════════════════════════════
 
 @app.route('/api/client-profile/<client_id>', methods=['PUT', 'OPTIONS'])
+@require_auth
 def update_client_profile(client_id):
+    if request.current_user['client_id'] != client_id and request.current_user.get('role') != 'admin':
+        return cors_response({'status': 'error', 'message': 'Forbidden'}, 403)
     import json as json_module
     body = request.get_json() or {}
 
@@ -971,7 +1003,12 @@ def update_client_profile(client_id):
 
 @app.route('/api/notify', methods=['POST', 'OPTIONS'])
 def notify_clients():
-    """Called by n8n after content generation to notify clients."""
+    """Called by n8n after content generation. Requires service token."""
+    expected = os_module.environ.get('QALAM_SERVICE_TOKEN', '')
+    provided = request.headers.get('X-Qalam-Service-Token', '')
+    if not expected or not provided or provided != expected:
+        return cors_response({"status": "error", "message": "Unauthorized"}, 401)
+
     body = request.get_json() or {}
     event_type = body.get('event', 'new_posts')
     client_id = body.get('client_id', CLIENT_ID)
@@ -990,6 +1027,7 @@ def notify_clients():
 # ================================================================
 
 @app.route('/api/worker/due-posts', methods=['GET', 'OPTIONS'])
+@require_auth
 def worker_get_due_posts():
     """Get posts due for publishing right now."""
     rows = db_query("""
@@ -1026,6 +1064,7 @@ def worker_get_due_posts():
 
 
 @app.route('/api/worker/upcoming-posts', methods=['GET', 'OPTIONS'])
+@require_auth
 def worker_get_upcoming_posts():
     """Get upcoming scheduled posts for display on startup."""
     rows = db_query("""
@@ -1054,6 +1093,7 @@ def worker_get_upcoming_posts():
 
 
 @app.route('/api/worker/mark-publishing', methods=['POST', 'OPTIONS'])
+@require_auth
 def worker_mark_publishing():
     """Atomically lock a post for publishing."""
     body = request.get_json() or {}
@@ -1074,6 +1114,7 @@ def worker_mark_publishing():
 
 
 @app.route('/api/worker/mark-published', methods=['POST', 'OPTIONS'])
+@require_auth
 def worker_mark_published():
     """Mark a post as successfully published."""
     body = request.get_json() or {}
@@ -1095,6 +1136,7 @@ def worker_mark_published():
 
 
 @app.route('/api/worker/mark-failed', methods=['POST', 'OPTIONS'])
+@require_auth
 def worker_mark_failed():
     """Mark a post as failed and schedule retry."""
     body = request.get_json() or {}
@@ -1130,6 +1172,7 @@ def worker_mark_failed():
 
 
 @app.route('/api/worker/cleanup', methods=['POST', 'OPTIONS'])
+@require_auth
 def worker_cleanup():
     """Run cleanup of old/stale posts."""
     try:
@@ -1178,13 +1221,15 @@ def updater_script():
         with open(script_path, 'rb') as f:
             content = f.read()
         from flask import Response
+        cors_headers = {'Content-Disposition': 'attachment; filename=linkedin_actions.py'}
+        origin = _allowed_origin()
+        if origin:
+            cors_headers['Access-Control-Allow-Origin'] = origin
+            cors_headers['Vary'] = 'Origin'
         return Response(
             content,
             mimetype='text/plain',
-            headers={
-                'Access-Control-Allow-Origin': '*',
-                'Content-Disposition': 'attachment; filename=linkedin_actions.py'
-            }
+            headers=cors_headers
         )
     except Exception as e:
         return cors_response({'status': 'error', 'message': str(e)}, 500)
@@ -1407,6 +1452,7 @@ def report_error():
 
 
 @app.route('/api/feedback/rating', methods=['POST', 'OPTIONS'])
+@require_auth
 def submit_rating():
     """User satisfaction rating submission."""
     body = request.get_json() or {}
@@ -1437,8 +1483,12 @@ def submit_rating():
 
 
 @app.route('/api/feedback/all', methods=['GET', 'OPTIONS'])
+@require_auth
 def get_feedback():
     """Admin endpoint to view all feedback."""
+    user = request.current_user
+    if user.get('role') != 'admin':
+        return cors_response({'status': 'error', 'message': 'Admin only'}, 403)
     rows = db_query("""
         SELECT id, client_id, type, rating, message,
                error_details, app_version, os_info, created_at

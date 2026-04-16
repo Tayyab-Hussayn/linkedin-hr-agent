@@ -256,7 +256,8 @@ def publish_post(post):
         print(f"[DEBUG] Python exists: {Path(python_exec_path).exists()}", flush=True)
 
         result = subprocess.run(
-            [python_exec_path, actions_path, json.dumps(payload)],
+            [python_exec_path, actions_path],
+            input=json.dumps(payload),
             capture_output=True,
             text=True,
             timeout=120,
