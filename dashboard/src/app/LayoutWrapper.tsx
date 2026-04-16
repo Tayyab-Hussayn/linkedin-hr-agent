@@ -7,6 +7,7 @@ import { Header } from '@/components/layout/Header'
 import { MobileNav } from '@/components/layout/MobileNav'
 import { ToastContainer } from '@/components/ui/Toast'
 import FeedbackBanner from '@/components/FeedbackBanner'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { useAppContext } from '@/context/AppContext'
 import { useSSE } from '@/hooks/useSSE'
 import { api, getApiUrl } from '@/lib/api'
@@ -137,7 +138,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   if (isPublicPage) {
     return (
       <>
-        {children}
+        <ErrorBoundary>{children}</ErrorBoundary>
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       </>
     )
@@ -188,7 +189,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       {/* Main Content */}
       <main className={`${updateAvailable && !isPublicPage ? 'pt-[95px]' : 'pt-[60px]'} pb-20 md:pb-6 md:ml-[220px] min-h-screen`}>
         <div className="max-w-[900px] mx-auto px-4 py-6">
-          {children}
+          <ErrorBoundary>{children}</ErrorBoundary>
         </div>
       </main>
 

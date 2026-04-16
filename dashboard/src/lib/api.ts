@@ -44,16 +44,25 @@ function getCurrentClientId(): string | null {
   }
 }
 
+const DEFAULT_TIMEOUT_MS = 30_000
+
 async function apiFetch(url: string, options?: RequestInit): Promise<Response> {
+  const controller = new AbortController()
+  const externalSignal = options?.signal as AbortSignal | undefined
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort(externalSignal.reason)
+    else externalSignal.addEventListener('abort', () => controller.abort((externalSignal as any).reason))
+  }
+  const timer = setTimeout(() => controller.abort(new Error('Request timeout')), DEFAULT_TIMEOUT_MS)
+
   let res: Response
   try {
-    res = await fetch(url, options)
+    res = await fetch(url, { ...options, signal: controller.signal })
   } catch (error) {
-    reportError('API fetch failed', {
-      url,
-      error: String(error)
-    })
+    reportError('API fetch failed', { url, error: String(error) })
     throw error
+  } finally {
+    clearTimeout(timer)
   }
 
   if (res.status === 401) {

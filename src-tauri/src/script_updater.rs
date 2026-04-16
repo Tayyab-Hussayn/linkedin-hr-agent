@@ -98,13 +98,21 @@ pub fn check_and_update(resources_dir: PathBuf, api_base: String) {
         }
 
         let script_path = resources_dir.join("linkedin_actions.py");
-        match fs::write(&script_path, &content) {
+        let tmp_path = resources_dir.join("linkedin_actions.py.tmp");
+
+        if let Err(e) = fs::write(&tmp_path, &content) {
+            debug_println!("[UPDATER] Failed to write tmp script: {}", e);
+            return;
+        }
+        match fs::rename(&tmp_path, &script_path) {
             Ok(_) => {
                 save_local_version(&resources_dir, &remote_info.version);
                 debug_println!("[UPDATER] Script updated to v{}", remote_info.version);
             }
             Err(e) => {
-                debug_println!("[UPDATER] Failed to write script: {}", e);
+                // Clean up the tmp file if rename failed.
+                let _ = fs::remove_file(&tmp_path);
+                debug_println!("[UPDATER] Failed to rename tmp into place: {}", e);
             }
         }
     });

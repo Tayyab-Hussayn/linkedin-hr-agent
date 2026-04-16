@@ -95,15 +95,18 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Hide window on close instead of quitting
-            let window = app.get_webview_window("main").unwrap();
-            let window_clone = window.clone();
-            window.on_window_event(move |event| {
-                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    let _ = window_clone.hide();
-                }
-            });
+            // Hide window on close instead of quitting (skip if window missing).
+            if let Some(window) = app.get_webview_window("main") {
+                let window_clone = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = window_clone.hide();
+                    }
+                });
+            } else {
+                debug_eprintln!("[TAURI] Main window not found during setup — skipping close handler");
+            }
 
             // ── Worker environment setup ───────────────────────────────────
             let api_url = std::env::var("QALAM_API_URL")
@@ -151,8 +154,13 @@ pub fn run() {
             let system_tz_watchdog = system_tz.clone();
 
             tauri::async_runtime::spawn(async move {
+                // Exponential backoff: 5s, 10s, 30s, 60s, capped at 300s (5 min).
+                const BACKOFF_LADDER_SECS: [u64; 5] = [5, 10, 30, 60, 300];
+                let mut fail_count: usize = 0;
+
                 loop {
-                    debug_println!("[WATCHDOG] Starting qalam-worker...");
+                    debug_println!("[WATCHDOG] Starting qalam-worker (fails={})", fail_count);
+                    let last_start = std::time::Instant::now();
 
                     match app_handle_watchdog.shell().sidecar("qalam-worker") {
                         Ok(cmd) => {
@@ -164,35 +172,17 @@ pub fn run() {
                                 .spawn()
                             {
                                 Ok((mut rx, child)) => {
-                                    debug_println!(
-                                        "[WATCHDOG] Worker started (PID managed by Tauri)"
-                                    );
-
+                                    debug_println!("[WATCHDOG] Worker started");
                                     while let Some(event) = rx.recv().await {
                                         match event {
-                                            tauri_plugin_shell::process::CommandEvent::Stdout(
-                                                line,
-                                            ) => {
-                                                debug_println!(
-                                                    "[WORKER] {}",
-                                                    String::from_utf8_lossy(&line)
-                                                );
+                                            tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
+                                                debug_println!("[WORKER] {}", String::from_utf8_lossy(&line));
                                             }
-                                            tauri_plugin_shell::process::CommandEvent::Stderr(
-                                                line,
-                                            ) => {
-                                                debug_eprintln!(
-                                                    "[WORKER ERR] {}",
-                                                    String::from_utf8_lossy(&line)
-                                                );
+                                            tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
+                                                debug_eprintln!("[WORKER ERR] {}", String::from_utf8_lossy(&line));
                                             }
-                                            tauri_plugin_shell::process::CommandEvent::Terminated(
-                                                status,
-                                            ) => {
-                                                debug_eprintln!(
-                                                    "[WATCHDOG] Worker terminated: {:?}",
-                                                    status
-                                                );
+                                            tauri_plugin_shell::process::CommandEvent::Terminated(status) => {
+                                                debug_eprintln!("[WATCHDOG] Worker terminated: {:?}", status);
                                                 break;
                                             }
                                             _ => {}
@@ -210,8 +200,16 @@ pub fn run() {
                         }
                     }
 
-                    debug_println!("[WATCHDOG] Restarting worker in 5 seconds...");
-                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                    // If the worker ran for >=60s we treat this as a healthy run — reset counter.
+                    if last_start.elapsed() >= std::time::Duration::from_secs(60) {
+                        fail_count = 0;
+                    } else {
+                        fail_count = fail_count.saturating_add(1);
+                    }
+
+                    let delay = BACKOFF_LADDER_SECS[fail_count.min(BACKOFF_LADDER_SECS.len() - 1)];
+                    debug_println!("[WATCHDOG] Restarting worker in {}s (fails={})", delay, fail_count);
+                    tokio::time::sleep(tokio::time::Duration::from_secs(delay)).await;
                 }
             });
 

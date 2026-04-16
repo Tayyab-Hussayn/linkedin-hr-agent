@@ -39,6 +39,7 @@ def _allowed_origin():
 # SSE event broadcaster
 _sse_clients: list = []
 _sse_lock = threading.Lock()
+_SSE_MAX_CLIENTS = 200  # fail-safe cap to prevent unbounded growth
 
 def broadcast_event(event_type: str, data: dict, target_client_id: str = None):
     """Send event to SSE clients. If target_client_id is set, only that tenant's
@@ -503,31 +504,38 @@ def sse_stream():
     if not user:
         return cors_response({"status": "error", "message": "Unauthorized"}, 401)
     client_id = user['client_id']
-    client_queue = queue_module.Queue()
+    client_queue = queue_module.Queue(maxsize=50)
 
     with _sse_lock:
+        # Evict oldest connection if cap hit.
+        if len(_sse_clients) >= _SSE_MAX_CLIENTS:
+            try:
+                _sse_clients.pop(0)
+            except IndexError:
+                pass
         _sse_clients.append((client_id, client_queue))
 
     def generate():
-        # Send initial connection event
-        yield f"data: {json.dumps({'type': 'connected', 'client_id': client_id})}\n\n"
+        try:
+            # Send initial connection event
+            yield f"data: {json.dumps({'type': 'connected', 'client_id': client_id})}\n\n"
 
-        while True:
-            try:
-                # Wait for event with 25s timeout (keep-alive)
-                event = client_queue.get(timeout=25)
-                yield f"data: {json.dumps(event)}\n\n"
-            except queue_module.Empty:
-                # Send keep-alive ping
-                yield f"data: {json.dumps({'type': 'ping'})}\n\n"
-            except GeneratorExit:
-                break
-
-        with _sse_lock:
-            try:
-                _sse_clients.remove((client_id, client_queue))
-            except ValueError:
-                pass
+            while True:
+                try:
+                    # Wait for event with 25s timeout (keep-alive)
+                    event = client_queue.get(timeout=25)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except queue_module.Empty:
+                    # Send keep-alive ping
+                    yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+                except GeneratorExit:
+                    break
+        finally:
+            with _sse_lock:
+                try:
+                    _sse_clients.remove((client_id, client_queue))
+                except ValueError:
+                    pass
 
     response = app.response_class(
         generate(),
