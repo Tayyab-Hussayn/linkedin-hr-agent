@@ -1,8 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { auth } from '@/lib/auth'
-
-const APP_VERSION = '1.0.7'
+import { APP_VERSION } from '@/lib/version'
 const FEEDBACK_INTERVAL_DAYS = 60
 const FIRST_SHOW_AFTER_DAYS = 30
 

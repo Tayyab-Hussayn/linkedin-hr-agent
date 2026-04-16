@@ -12,6 +12,7 @@ import { useAppContext } from '@/context/AppContext'
 import { useSSE } from '@/hooks/useSSE'
 import { api, getApiUrl } from '@/lib/api'
 import { auth } from '@/lib/auth'
+import { APP_VERSION } from '@/lib/version'
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -106,8 +107,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       const res = await fetch(`${getApiUrl()}/updater/app-version.json`)
       const data = await res.json()
 
-      // Current app version — update this when releasing
-      const CURRENT_VERSION = '1.2.1'
+      // Current app version (single source of truth — see lib/version.ts)
+      const CURRENT_VERSION = APP_VERSION
 
       localStorage.setItem('qalam_update_check', now.toString())
 

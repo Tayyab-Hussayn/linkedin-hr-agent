@@ -1,4 +1,4 @@
-# version: 1.0.0
+# version: 1.0.1
 """
 Single entry point for all LinkedIn browser actions.
 Called by Flask action server with JSON args.
@@ -9,6 +9,7 @@ Usage:
   python linkedin_actions.py '{"action": "react", "post_url": "...", "reaction": "like", "email": "...", "password": "..."}'
 """
 
+import os
 import sys
 import json
 import asyncio
@@ -79,7 +80,7 @@ async def run(args: dict):
             args=STEALTH_ARGS,
             viewport={"width": 1280, "height": 800},
             locale="en-US",
-            timezone_id="Asia/Karachi",
+            timezone_id=os.environ.get("QALAM_TIMEZONE", "Asia/Karachi"),
             color_scheme="light",
             device_scale_factor=1,
             has_touch=False,
@@ -195,7 +196,7 @@ async def do_post(page, content: str) -> str:
             await link.wait_for(state="visible", timeout=10000)
             start_btn = link
             print("[STEP 2] Found as link", file=sys.stderr)
-        except:
+        except PlaywrightTimeout:
             pass
 
         if not start_btn:
@@ -204,7 +205,7 @@ async def do_post(page, content: str) -> str:
                 await btn.wait_for(state="visible", timeout=10000)
                 start_btn = btn
                 print("[STEP 2] Found as button", file=sys.stderr)
-            except:
+            except PlaywrightTimeout:
                 pass
 
         if not start_btn:
@@ -213,14 +214,15 @@ async def do_post(page, content: str) -> str:
                 await el.wait_for(state="visible", timeout=10000)
                 start_btn = el
                 print("[STEP 2] Found via CSS", file=sys.stderr)
-            except:
+            except PlaywrightTimeout:
                 pass
 
         if not start_btn:
             print("[STEP 2 ERROR] Start a post not found", file=sys.stderr)
             try:
                 await page.screenshot(path="/tmp/debug_start_post.png", timeout=5000)
-            except: pass
+            except Exception:
+                pass
             print(json.dumps({"status": "error", "message": "Could not find Start a post button"}), flush=True)
             return
 
@@ -238,7 +240,7 @@ async def do_post(page, content: str) -> str:
             await shadow_editor.wait_for(state="visible", timeout=8000)
             editor = shadow_editor
             print("[STEP 3] Found shadow DOM editor", file=sys.stderr)
-        except:
+        except PlaywrightTimeout:
             pass
 
         if not editor:
@@ -247,7 +249,7 @@ async def do_post(page, content: str) -> str:
                 await label_editor.wait_for(state="visible", timeout=8000)
                 editor = label_editor
                 print("[STEP 3] Found label editor", file=sys.stderr)
-            except:
+            except PlaywrightTimeout:
                 pass
 
         if not editor:
@@ -256,14 +258,15 @@ async def do_post(page, content: str) -> str:
                 await div_editor.wait_for(state="visible", timeout=8000)
                 editor = div_editor
                 print("[STEP 3] Found contenteditable editor", file=sys.stderr)
-            except:
+            except PlaywrightTimeout:
                 pass
 
         if not editor:
             print("[STEP 3 ERROR] Editor not found", file=sys.stderr)
             try:
                 await page.screenshot(path="/tmp/debug_editor.png", timeout=5000)
-            except: pass
+            except Exception:
+                pass
             print(json.dumps({"status": "error", "message": "Could not find text editor"}), flush=True)
             return
 
@@ -363,7 +366,7 @@ async def do_post(page, content: str) -> str:
                 if dialog_count == 0:
                     success = True
                     break
-            except:
+            except Exception:
                 pass
 
         print(f"[STEP 6 DONE] Verification complete, URL: {page.url}, success: {success}", file=sys.stderr)

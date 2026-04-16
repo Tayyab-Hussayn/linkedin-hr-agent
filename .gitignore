@@ -77,6 +77,8 @@ appendonly.aof
 *.sql
 *.dump
 pgdata/
+# Canonical schema must be tracked.
+!database/schema.sql
 
 # ===============================
 # n8n

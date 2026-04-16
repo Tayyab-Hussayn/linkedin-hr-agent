@@ -1,6 +1,5 @@
 import { auth } from './auth'
-
-const APP_VERSION = '1.2.1'
+import { APP_VERSION } from './version'
 
 export async function reportError(
   message: string,

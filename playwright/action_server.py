@@ -22,6 +22,8 @@ from prompt_builder import build_system_prompt, build_user_prompt, get_client_pr
 signal.signal(signal.SIGCHLD, signal.SIG_DFL)
 
 app = Flask(__name__)
+# Reject request bodies larger than 10 MB (Q5 audit fix).
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
 
 ALLOWED_ORIGINS = {
     "https://app.byqalam.com",
@@ -444,7 +446,7 @@ def execute():
                     status_updates.append(parsed['status_update'])
                     print(f"[STATUS UPDATE] {parsed['status_update']}", file=sys.stderr)
                 last_line = line
-            except:
+            except (json.JSONDecodeError, ValueError):
                 pass
 
         # Update final status based on exit code and status updates
@@ -463,7 +465,7 @@ def execute():
         # Parse last line of stdout as JSON result
         try:
             action_result = json.loads(last_line)
-        except:
+        except (json.JSONDecodeError, ValueError):
             action_result = {
                 "status": "error",
                 "message": f"Could not parse output: {last_line[:200]}"
@@ -763,7 +765,7 @@ def approve_post():
             d = datetime.fromisoformat(scheduled_for.replace('Z', '+00:00'))
             d_pkt = d.astimezone(PKT)
             scheduled_display = d_pkt.strftime('%a, %b %d at %I:%M %p')
-        except:
+        except (ValueError, AttributeError):
             scheduled_display = str(scheduled_for)
 
         return cors_response({
@@ -936,7 +938,7 @@ def get_client_profile(client_id):
         if isinstance(val, str):
             try:
                 client[field] = json_module.loads(val)
-            except:
+            except (json_module.JSONDecodeError, ValueError):
                 client[field] = []
 
     # Build dynamic prompts
