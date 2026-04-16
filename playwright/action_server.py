@@ -10,6 +10,7 @@ import urllib.request
 import random
 import jwt
 import bcrypt
+import hmac
 import threading
 import queue as queue_module
 import time
@@ -39,21 +40,29 @@ def _allowed_origin():
 _sse_clients: list = []
 _sse_lock = threading.Lock()
 
-def broadcast_event(event_type: str, data: dict):
-    """Send event to all connected SSE clients."""
+def broadcast_event(event_type: str, data: dict, target_client_id: str = None):
+    """Send event to SSE clients. If target_client_id is set, only that tenant's
+    subscribers receive the event."""
+    event = {
+        'type': event_type,
+        'data': data,
+        'timestamp': datetime.now(timezone.utc).isoformat()
+    }
     with _sse_lock:
         dead = []
-        for q in _sse_clients:
+        for entry in _sse_clients:
+            cid, q = entry
+            if target_client_id is not None and cid != target_client_id:
+                continue
             try:
-                q.put_nowait({
-                    'type': event_type,
-                    'data': data,
-                    'timestamp': datetime.now(timezone.utc).isoformat()
-                })
+                q.put_nowait(event)
             except Exception:
-                dead.append(q)
-        for q in dead:
-            _sse_clients.remove(q)
+                dead.append(entry)
+        for entry in dead:
+            try:
+                _sse_clients.remove(entry)
+            except ValueError:
+                pass
 
 _db_pool = None
 
@@ -92,9 +101,9 @@ def cors_response(data, status=200):
     if origin:
         response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Vary'] = 'Origin'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-    response.headers['Access-Control-Allow-Credentials'] = 'true'
     return response, status
 
 # ================================================================
@@ -167,9 +176,9 @@ def handle_options():
         if origin:
             response.headers['Access-Control-Allow-Origin'] = origin
             response.headers['Vary'] = 'Origin'
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
         return response, 200
 
 # ================================================================
@@ -490,11 +499,14 @@ def sse_stream():
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
         return response, 200
 
-    client_id = get_client_id()
+    user = get_current_user()
+    if not user:
+        return cors_response({"status": "error", "message": "Unauthorized"}, 401)
+    client_id = user['client_id']
     client_queue = queue_module.Queue()
 
     with _sse_lock:
-        _sse_clients.append(client_queue)
+        _sse_clients.append((client_id, client_queue))
 
     def generate():
         # Send initial connection event
@@ -513,7 +525,7 @@ def sse_stream():
 
         with _sse_lock:
             try:
-                _sse_clients.remove(client_queue)
+                _sse_clients.remove((client_id, client_queue))
             except ValueError:
                 pass
 
@@ -698,6 +710,10 @@ def approve_post():
 
     post = posts[0]
 
+    if post.get('client_id') != request.current_user['client_id'] \
+       and request.current_user.get('role') != 'admin':
+        return cors_response({'status': 'error', 'message': 'Forbidden'}, 403)
+
     if post['post_status'] == 'published':
         return cors_response({"status": "error", "message": "Post already published"}, 400)
 
@@ -730,7 +746,7 @@ def approve_post():
         broadcast_event('post_approved', {
             'post_id': post_id,
             'scheduled_for': scheduled_for
-        })
+        }, target_client_id=post.get('client_id'))
 
         # Build human readable display time
         scheduled_display = ''
@@ -763,7 +779,7 @@ def approve_post():
         # Broadcast to all connected clients
         broadcast_event('post_rejected', {
             'post_id': post_id
-        })
+        }, target_client_id=post.get('client_id'))
 
         return cors_response({
             "status": "ok",
@@ -790,10 +806,11 @@ def publish_now():
         UPDATE posts
         SET scheduled_for = NOW()
         WHERE id = %s
+            AND client_id = %s
             AND approval_status = 'approved'
             AND post_status = 'draft'
         RETURNING id, scheduled_for
-    """, [post_id])
+    """, [post_id, request.current_user['client_id']])
 
     if not updated:
         return cors_response({"status": "error", "message": "Post not found or not eligible"}, 404)
@@ -803,7 +820,7 @@ def publish_now():
     # Broadcast to all connected clients
     broadcast_event('publish_now', {
         'post_id': post_id
-    })
+    }, target_client_id=request.current_user['client_id'])
 
     return cors_response({
         "status": "ok",
@@ -1006,7 +1023,7 @@ def notify_clients():
     """Called by n8n after content generation. Requires service token."""
     expected = os_module.environ.get('QALAM_SERVICE_TOKEN', '')
     provided = request.headers.get('X-Qalam-Service-Token', '')
-    if not expected or not provided or provided != expected:
+    if not expected or not provided or not hmac.compare_digest(provided, expected):
         return cors_response({"status": "error", "message": "Unauthorized"}, 401)
 
     body = request.get_json() or {}
@@ -1018,7 +1035,7 @@ def notify_clients():
         'client_id': client_id,
         'count': count,
         'message': f'{count} new post(s) ready for review'
-    })
+    }, target_client_id=client_id)
     return cors_response({'status': 'ok'})
 
 # ================================================================
@@ -1129,8 +1146,10 @@ def worker_mark_published():
         WHERE id = %s
     """, [post_id], fetch=False)
 
-    # Broadcast SSE event
-    broadcast_event('post_published', {'post_id': post_id})
+    # Broadcast SSE event — scope to the post's tenant
+    row = db_query("SELECT client_id FROM posts WHERE id = %s", [post_id])
+    tgt = row[0]['client_id'] if row else None
+    broadcast_event('post_published', {'post_id': post_id}, target_client_id=tgt)
 
     return cors_response({'status': 'ok'})
 
