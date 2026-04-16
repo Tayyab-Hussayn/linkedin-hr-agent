@@ -558,5 +558,5 @@ Production Flask server requires these env vars:
 - **Timezone** — Tauri detects system timezone (`TZ` env → `/etc/timezone` → UTC); browser uses local timezone; worker uses `QALAM_TIMEZONE` env var
 - **GitHub repo** — Private. All download traffic goes through Flask proxy at `api.byqalam.com`
 - **Registration** — Does not set niche. Niche is configured during onboarding flow.
-- **Version sync** — `tauri.conf.json`, `Cargo.toml`, `errorReporter.ts`, and `LayoutWrapper.tsx` (`CURRENT_VERSION`) must all match
-- **Current version** — `1.2.0`
+- **Version sync** — `tauri.conf.json`, `Cargo.toml`, and `dashboard/src/lib/version.ts` (`APP_VERSION`) must all match. Dashboard components (`errorReporter`, `LayoutWrapper`, `FeedbackBanner`) import from `lib/version.ts` — single source of truth.
+- **Current version** — `1.3.0`
