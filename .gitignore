@@ -144,6 +144,12 @@ lerna-debug.log*
 .pnpm-store/
 
 # ===============================
+# Uploads
+# ===============================
+playwright/uploads/*
+!playwright/uploads/.gitkeep
+
+# ===============================
 # Temporary Files
 # ===============================
 tmp/

@@ -114,6 +114,18 @@ CREATE TABLE IF NOT EXISTS posts (
   next_retry_at    TIMESTAMP
 );
 
+-- ─── post_images ──────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS post_images (
+    id            TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
+    post_id       TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    filename      TEXT NOT NULL,
+    original_name TEXT,
+    mime_type     TEXT NOT NULL,
+    size_bytes    INTEGER NOT NULL,
+    sort_order    INTEGER DEFAULT 0,
+    created_at    TIMESTAMP DEFAULT NOW()
+);
+
 -- ─── engagement_log ───────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS engagement_log (
   id               TEXT PRIMARY KEY,
@@ -165,6 +177,7 @@ CREATE INDEX IF NOT EXISTS idx_engagement_executed      ON engagement_log(execut
 -- Composite index for the worker's hot due-posts query (Q4 audit fix).
 CREATE INDEX IF NOT EXISTS idx_posts_queue
     ON posts(client_id, approval_status, post_status, scheduled_for);
+CREATE INDEX IF NOT EXISTS idx_post_images_post_id ON post_images(post_id);
 
 -- ─── View: client_effective_limits ────────────────────────────────────────────
 CREATE OR REPLACE VIEW client_effective_limits AS
