@@ -1,3 +1,4 @@
+# version: 1.0.1
 """
 Single entry point for all LinkedIn browser actions.
 Called by Flask action server with JSON args.
@@ -8,6 +9,7 @@ Usage:
   python linkedin_actions.py '{"action": "react", "post_url": "...", "reaction": "like", "email": "...", "password": "..."}'
 """
 
+import os
 import sys
 import json
 import asyncio
@@ -78,7 +80,7 @@ async def run(args: dict):
             args=STEALTH_ARGS,
             viewport={"width": 1280, "height": 800},
             locale="en-US",
-            timezone_id="Asia/Karachi",
+            timezone_id=os.environ.get("QALAM_TIMEZONE", "Asia/Karachi"),
             color_scheme="light",
             device_scale_factor=1,
             has_touch=False,
@@ -107,7 +109,7 @@ async def run(args: dict):
 
             result = None
             if action == "post":
-                result = await do_post(page, args["content"])
+                result = await do_post(page, args["content"], args.get("image_paths"))
             elif action == "comment":
                 result = await do_comment(page, args["post_url"], args["comment"])
             elif action == "react":
@@ -164,7 +166,7 @@ async def ensure_logged_in(page, email: str, password: str) -> bool:
 
 
 # ─── Post ─────────────────────────────────────────────────────────────────────
-async def do_post(page, content: str) -> str:
+async def do_post(page, content: str, image_paths: list = None) -> str:
     # Status update: publishing started
     print(json.dumps({"status_update": "publishing"}), flush=True)
 
@@ -194,7 +196,7 @@ async def do_post(page, content: str) -> str:
             await link.wait_for(state="visible", timeout=10000)
             start_btn = link
             print("[STEP 2] Found as link", file=sys.stderr)
-        except:
+        except PlaywrightTimeout:
             pass
 
         if not start_btn:
@@ -203,7 +205,7 @@ async def do_post(page, content: str) -> str:
                 await btn.wait_for(state="visible", timeout=10000)
                 start_btn = btn
                 print("[STEP 2] Found as button", file=sys.stderr)
-            except:
+            except PlaywrightTimeout:
                 pass
 
         if not start_btn:
@@ -212,14 +214,15 @@ async def do_post(page, content: str) -> str:
                 await el.wait_for(state="visible", timeout=10000)
                 start_btn = el
                 print("[STEP 2] Found via CSS", file=sys.stderr)
-            except:
+            except PlaywrightTimeout:
                 pass
 
         if not start_btn:
             print("[STEP 2 ERROR] Start a post not found", file=sys.stderr)
             try:
                 await page.screenshot(path="/tmp/debug_start_post.png", timeout=5000)
-            except: pass
+            except Exception:
+                pass
             print(json.dumps({"status": "error", "message": "Could not find Start a post button"}), flush=True)
             return
 
@@ -229,6 +232,75 @@ async def do_post(page, content: str) -> str:
         await random_delay(2, 3)
         print("[STEP 2 DONE] Clicked Start a post", file=sys.stderr)
 
+        # STEP 2.5 - Upload images if provided
+        if image_paths:
+            print(f"[STEP 2.5 START] Uploading {len(image_paths)} image(s)", file=sys.stderr)
+            try:
+                # Find the media/image button in the post composer toolbar
+                media_btn = None
+
+                # Try aria-label selectors for the image/photo button
+                for selector in [
+                    'button[aria-label="Add a photo"]',
+                    'button[aria-label="Add media"]',
+                    'button[aria-label="Add a image"]',
+                    'button[aria-label="Photo"]',
+                    '.share-creation-state__action-btn--media',
+                    'button.image-sharing-detour-button',
+                ]:
+                    try:
+                        btn = page.locator(selector).first
+                        if await btn.count() > 0:
+                            await btn.wait_for(state="visible", timeout=5000)
+                            media_btn = btn
+                            print(f"[STEP 2.5] Found media button: {selector}", file=sys.stderr)
+                            break
+                    except Exception:
+                        continue
+
+                if not media_btn:
+                    # Fallback: try finding by icon/svg in toolbar
+                    try:
+                        media_btn = page.locator('[data-test-icon="image-medium"]').first
+                        await media_btn.wait_for(state="visible", timeout=3000)
+                        print("[STEP 2.5] Found media button via data-test-icon", file=sys.stderr)
+                    except Exception:
+                        pass
+
+                if media_btn:
+                    await random_delay(0.5, 1.0)
+
+                    # Use file chooser pattern — click media button and handle dialog
+                    async with page.expect_file_chooser(timeout=10000) as fc_info:
+                        await media_btn.click()
+
+                    file_chooser = await fc_info.value
+                    await file_chooser.set_files(image_paths)
+
+                    print(f"[STEP 2.5] Files set: {image_paths}", file=sys.stderr)
+
+                    # Wait for upload thumbnails to appear
+                    await random_delay(3, 5)
+
+                    # Verify images loaded by checking for image preview elements
+                    try:
+                        await page.wait_for_selector(
+                            '.share-creation-state__image-container, '
+                            '.media-preview, '
+                            'img[class*="image-sharing"]',
+                            timeout=15000
+                        )
+                        print("[STEP 2.5 DONE] Images uploaded to composer", file=sys.stderr)
+                    except Exception:
+                        print("[STEP 2.5 WARN] Could not verify image previews, continuing anyway", file=sys.stderr)
+
+                    await random_delay(1, 2)
+                else:
+                    print("[STEP 2.5 WARN] Media button not found — posting text-only", file=sys.stderr)
+
+            except Exception as e:
+                print(f"[STEP 2.5 WARN] Image upload failed: {e} — posting text-only", file=sys.stderr)
+
         # STEP 3 - Wait for and click the text editor
         editor = None
         try:
@@ -237,7 +309,7 @@ async def do_post(page, content: str) -> str:
             await shadow_editor.wait_for(state="visible", timeout=8000)
             editor = shadow_editor
             print("[STEP 3] Found shadow DOM editor", file=sys.stderr)
-        except:
+        except PlaywrightTimeout:
             pass
 
         if not editor:
@@ -246,7 +318,7 @@ async def do_post(page, content: str) -> str:
                 await label_editor.wait_for(state="visible", timeout=8000)
                 editor = label_editor
                 print("[STEP 3] Found label editor", file=sys.stderr)
-            except:
+            except PlaywrightTimeout:
                 pass
 
         if not editor:
@@ -255,14 +327,15 @@ async def do_post(page, content: str) -> str:
                 await div_editor.wait_for(state="visible", timeout=8000)
                 editor = div_editor
                 print("[STEP 3] Found contenteditable editor", file=sys.stderr)
-            except:
+            except PlaywrightTimeout:
                 pass
 
         if not editor:
             print("[STEP 3 ERROR] Editor not found", file=sys.stderr)
             try:
                 await page.screenshot(path="/tmp/debug_editor.png", timeout=5000)
-            except: pass
+            except Exception:
+                pass
             print(json.dumps({"status": "error", "message": "Could not find text editor"}), flush=True)
             return
 
@@ -362,7 +435,7 @@ async def do_post(page, content: str) -> str:
                 if dialog_count == 0:
                     success = True
                     break
-            except:
+            except Exception:
                 pass
 
         print(f"[STEP 6 DONE] Verification complete, URL: {page.url}, success: {success}", file=sys.stderr)
@@ -447,12 +520,25 @@ async def do_react(page, post_url: str, reaction: str = "like") -> str:
 
 # ─── Entry Point ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(json.dumps({"status": "error", "message": "No args provided"}))
+    # Prefer stdin (secure — no creds in `ps aux`); fall back to argv for dev.
+    raw_payload = None
+    try:
+        if not sys.stdin.isatty():
+            data = sys.stdin.read().strip()
+            if data:
+                raw_payload = data
+        if raw_payload is None and len(sys.argv) > 1:
+            raw_payload = sys.argv[1]
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": f"Failed to read payload: {str(e)}"}))
+        sys.exit(1)
+
+    if not raw_payload:
+        print(json.dumps({"status": "error", "message": "No payload provided"}))
         sys.exit(1)
 
     try:
-        args = json.loads(sys.argv[1])
+        args = json.loads(raw_payload)
         asyncio.run(run(args))
     except json.JSONDecodeError as e:
         print(json.dumps({"status": "error", "message": f"Invalid JSON args: {str(e)}"}))
