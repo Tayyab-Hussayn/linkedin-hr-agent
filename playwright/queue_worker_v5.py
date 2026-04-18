@@ -172,6 +172,48 @@ def run_cleanup():
     """Trigger cleanup of old/stale posts."""
     api_post('/api/worker/cleanup')
 
+def download_post_images(post):
+    """Download images from Flask API to a temp directory. Returns list of local paths."""
+    images = post.get('images', [])
+    if not images:
+        return []
+
+    import tempfile
+    tmp_dir = tempfile.mkdtemp(prefix='qalam_img_')
+    paths = []
+
+    for img in images:
+        image_id = img['id']
+        filename = img['filename']
+        local_path = os.path.join(tmp_dir, filename)
+
+        try:
+            url = f'{API_BASE_URL}/api/images/{image_id}'
+            r = requests.get(url, timeout=30, stream=True)
+            r.raise_for_status()
+
+            with open(local_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+
+            paths.append(local_path)
+            info(f"  Downloaded image: {filename}")
+        except Exception as e:
+            warn(f"  Failed to download image {image_id}: {e}")
+
+    return paths
+
+def cleanup_temp_images(paths):
+    """Remove temp image files and their parent directory."""
+    if not paths:
+        return
+    import shutil
+    try:
+        tmp_dir = os.path.dirname(paths[0])
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+    except Exception:
+        pass
+
 # ── Publishing ─────────────────────────────────────────────────
 def publish_post(post):
     """Run Playwright to publish a post to LinkedIn."""
@@ -196,12 +238,18 @@ def publish_post(post):
         update_post_failed(post_id, retry_count)
         return
 
+    # Download images if attached
+    image_paths = download_post_images(post)
+    if image_paths:
+        info(f"  {len(image_paths)} image(s) downloaded for post {post_id[:8]}...")
+
     payload = {
-        "action":   "post",
-        "post_id":  post_id,
-        "content":  post['content'],
-        "email":    linkedin_email,
-        "password": linkedin_password
+        "action":      "post",
+        "post_id":     post_id,
+        "content":     post['content'],
+        "email":       linkedin_email,
+        "password":    linkedin_password,
+        "image_paths": image_paths
     }
 
     try:
@@ -294,6 +342,8 @@ def publish_post(post):
         import traceback
         print(f"[DEBUG] Traceback: {traceback.format_exc()}", flush=True)
         update_post_failed(post_id, retry_count)
+    finally:
+        cleanup_temp_images(image_paths)
 
 # ── Main Loop ──────────────────────────────────────────────────
 def main():
