@@ -1,4 +1,4 @@
-import { Post, Stats, PillarStat, DailyActivity } from './types'
+import { Post, Stats, PillarStat, DailyActivity, PostImage } from './types'
 import { reportError } from './errorReporter'
 
 function getN8nUrl(): string {
@@ -468,6 +468,48 @@ export const api = {
       return res.json()
     } catch {
       return { status: 'error', message: 'Connection failed' }
+    }
+  },
+
+  // Upload images to a post
+  async uploadPostImages(postId: string, files: File[]): Promise<{ status: string; images?: PostImage[]; message?: string }> {
+    const formData = new FormData()
+    files.forEach(file => formData.append('images', file))
+
+    const headers: Record<string, string> = {}
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('postflow_token')
+      if (token) headers['Authorization'] = `Bearer ${token}`
+    }
+
+    try {
+      const res = await apiFetch(`${getApiUrl()}/api/posts/${postId}/images`, {
+        method: 'POST',
+        headers,  // No Content-Type — browser sets multipart boundary
+        body: formData
+      })
+      const text = await res.text()
+      if (!text) return { status: 'error', message: 'Empty response' }
+      const data = JSON.parse(text)
+      if (!res.ok) return { status: 'error', message: data.message || 'Upload failed' }
+      return data
+    } catch (error) {
+      console.error('Error uploading images:', error)
+      return { status: 'error', message: 'Upload failed' }
+    }
+  },
+
+  // Delete an image
+  async deletePostImage(imageId: string): Promise<{ status: string }> {
+    try {
+      const res = await apiFetch(`${getApiUrl()}/api/images/${imageId}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      })
+      if (!res.ok) return { status: 'error' }
+      return { status: 'ok' }
+    } catch {
+      return { status: 'error' }
     }
   },
 

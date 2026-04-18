@@ -1,3 +1,12 @@
+export interface PostImage {
+  id: string
+  original_name: string
+  mime_type: string
+  size_bytes: number
+  sort_order: number
+  url: string
+}
+
 export interface Post {
   id: string
   client_id: string
@@ -13,6 +22,7 @@ export interface Post {
   approved_at: string | null
   published_at: string | null
   scheduled_for: string | null
+  images?: PostImage[]
 }
 
 export interface Stats {
