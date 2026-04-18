@@ -14,8 +14,11 @@ import hmac
 import threading
 import queue as queue_module
 import time
+import uuid
 from datetime import datetime, timezone, timedelta
-from flask import Flask, request, jsonify
+from pathlib import Path
+from flask import Flask, request, jsonify, send_file
+from werkzeug.utils import secure_filename
 from config import DB_CONFIG, CLIENT_ID, N8N_GENERATE_NOW_WEBHOOK, JWT_SECRET, JWT_EXPIRY_DAYS
 from prompt_builder import build_system_prompt, build_user_prompt, get_client_profile_summary, get_available_niches
 
@@ -24,6 +27,13 @@ signal.signal(signal.SIGCHLD, signal.SIG_DFL)
 app = Flask(__name__)
 # Reject request bodies larger than 10 MB (Q5 audit fix).
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
+
+UPLOAD_DIR = Path(__file__).parent / 'uploads'
+UPLOAD_DIR.mkdir(exist_ok=True)
+ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/gif'}
+MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
+MAX_IMAGES_PER_POST = 4
+MIME_TO_EXT = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif'}
 
 ALLOWED_ORIGINS = {
     "https://app.byqalam.com",
@@ -96,6 +106,36 @@ def db_query(sql, params=None, fetch=True):
     finally:
         cur.close()
         pool.putconn(conn)
+
+def get_post_images(post_id):
+    """Fetch images for a single post, returning list of dicts with url."""
+    rows = db_query(
+        "SELECT id, original_name, mime_type, size_bytes, sort_order "
+        "FROM post_images WHERE post_id = %s ORDER BY sort_order",
+        [post_id]
+    )
+    for row in rows:
+        row['url'] = f'/api/images/{row["id"]}'
+    return rows
+
+
+def get_posts_images_bulk(post_ids):
+    """Fetch images for multiple posts at once, returning {post_id: [images]}."""
+    if not post_ids:
+        return {}
+    placeholders = ','.join(['%s'] * len(post_ids))
+    rows = db_query(
+        f"SELECT id, post_id, original_name, mime_type, size_bytes, sort_order "
+        f"FROM post_images WHERE post_id IN ({placeholders}) ORDER BY sort_order",
+        post_ids
+    )
+    result = {}
+    for row in rows:
+        pid = row.pop('post_id')
+        row['url'] = f'/api/images/{row["id"]}'
+        result.setdefault(pid, []).append(row)
+    return result
+
 
 def cors_response(data, status=200):
     """Return JSON response with CORS headers restricted to known origins."""
@@ -602,6 +642,12 @@ def get_posts():
             if row.get(key):
                 row[key] = row[key].isoformat()
 
+    # Attach images to each post
+    post_ids = [r['id'] for r in rows]
+    images_map = get_posts_images_bulk(post_ids)
+    for row in rows:
+        row['images'] = images_map.get(row['id'], [])
+
     return cors_response({
         "status": "ok",
         "posts": rows,
@@ -797,6 +843,143 @@ def approve_post():
             "post_id": post_id,
             "message": "Post rejected. A new post will be generated in the next run."
         })
+
+# ═══════════════════════════════════════════
+# IMAGE ENDPOINTS — Upload, serve, delete
+# ═══════════════════════════════════════════
+
+@app.route('/api/posts/<post_id>/images', methods=['POST', 'OPTIONS'])
+@require_auth
+def upload_post_images(post_id):
+    """Upload up to 4 images for a post."""
+    posts = db_query("SELECT id, client_id, approval_status FROM posts WHERE id = %s", [post_id])
+    if not posts:
+        return cors_response({"status": "error", "message": "Post not found"}, 404)
+    post = posts[0]
+    if post['client_id'] != request.current_user['client_id'] \
+       and request.current_user.get('role') != 'admin':
+        return cors_response({"status": "error", "message": "Forbidden"}, 403)
+    if post['approval_status'] == 'rejected':
+        return cors_response({"status": "error", "message": "Cannot attach images to rejected post"}, 400)
+
+    existing = db_query(
+        "SELECT COUNT(*)::int as cnt FROM post_images WHERE post_id = %s", [post_id]
+    )
+    existing_count = existing[0]['cnt'] if existing else 0
+
+    files = request.files.getlist('images')
+    if not files:
+        return cors_response({"status": "error", "message": "No images provided"}, 400)
+    if existing_count + len(files) > MAX_IMAGES_PER_POST:
+        return cors_response({
+            "status": "error",
+            "message": f"Too many images. Max {MAX_IMAGES_PER_POST}, currently have {existing_count}."
+        }, 400)
+
+    uploaded = []
+    for i, f in enumerate(files):
+        if f.content_type not in ALLOWED_IMAGE_TYPES:
+            return cors_response({
+                "status": "error",
+                "message": f"Invalid file type: {f.content_type}. Allowed: JPEG, PNG, GIF"
+            }, 400)
+
+        data = f.read()
+        if len(data) > MAX_IMAGE_SIZE:
+            return cors_response({
+                "status": "error",
+                "message": f"File '{f.filename}' exceeds 5MB limit"
+            }, 400)
+
+        ext = MIME_TO_EXT.get(f.content_type, '.jpg')
+        image_id = str(uuid.uuid4())
+        stored_name = f"{image_id}{ext}"
+        filepath = UPLOAD_DIR / stored_name
+
+        filepath.write_bytes(data)
+
+        original = secure_filename(f.filename or 'image') or 'image'
+        sort = existing_count + i
+        db_query(
+            "INSERT INTO post_images (id, post_id, filename, original_name, mime_type, size_bytes, sort_order) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            [image_id, post_id, stored_name, original, f.content_type, len(data), sort],
+            fetch=False
+        )
+
+        uploaded.append({
+            "id": image_id,
+            "filename": stored_name,
+            "original_name": original,
+            "mime_type": f.content_type,
+            "size_bytes": len(data),
+            "sort_order": sort,
+            "url": f"/api/images/{image_id}"
+        })
+
+    return cors_response({"status": "ok", "images": uploaded})
+
+
+@app.route('/api/posts/<post_id>/images', methods=['GET', 'OPTIONS'])
+@require_auth
+def list_post_images(post_id):
+    """List images for a post."""
+    images = get_post_images(post_id)
+    return cors_response({"status": "ok", "images": images})
+
+
+@app.route('/api/images/<image_id>', methods=['GET', 'OPTIONS'])
+def serve_image(image_id):
+    """Serve an image file by ID."""
+    rows = db_query(
+        "SELECT filename, mime_type FROM post_images WHERE id = %s", [image_id]
+    )
+    if not rows:
+        return cors_response({"status": "error", "message": "Image not found"}, 404)
+
+    filepath = UPLOAD_DIR / rows[0]['filename']
+    if not filepath.exists():
+        return cors_response({"status": "error", "message": "File missing"}, 404)
+
+    return send_file(str(filepath), mimetype=rows[0]['mime_type'])
+
+
+@app.route('/api/images/<image_id>', methods=['DELETE', 'OPTIONS'])
+@require_auth
+def delete_image(image_id):
+    """Delete an image from a post."""
+    rows = db_query(
+        "SELECT pi.id, pi.filename, pi.post_id, p.client_id "
+        "FROM post_images pi JOIN posts p ON p.id = pi.post_id "
+        "WHERE pi.id = %s",
+        [image_id]
+    )
+    if not rows:
+        return cors_response({"status": "error", "message": "Image not found"}, 404)
+
+    row = rows[0]
+    if row['client_id'] != request.current_user['client_id'] \
+       and request.current_user.get('role') != 'admin':
+        return cors_response({"status": "error", "message": "Forbidden"}, 403)
+
+    filepath = UPLOAD_DIR / row['filename']
+    if filepath.exists():
+        filepath.unlink()
+
+    db_query("DELETE FROM post_images WHERE id = %s", [image_id], fetch=False)
+
+    db_query(
+        "WITH ranked AS ("
+        "  SELECT id, ROW_NUMBER() OVER (ORDER BY sort_order) - 1 AS new_order "
+        "  FROM post_images WHERE post_id = %s"
+        ") UPDATE post_images SET sort_order = ranked.new_order "
+        "FROM ranked WHERE post_images.id = ranked.id",
+        [row['post_id']],
+        fetch=False
+    )
+
+    return cors_response({"status": "ok"})
+
 
 # ═══════════════════════════════════════════
 # NEW ENDPOINT 4 — POST /api/publish-now
@@ -1086,6 +1269,25 @@ def worker_get_due_posts():
         for key in ['scheduled_for', 'scheduled_for_local']:
             if row.get(key):
                 row[key] = str(row[key])
+
+    # Attach image filenames for worker
+    post_ids = [r['id'] for r in rows]
+    if post_ids:
+        placeholders = ','.join(['%s'] * len(post_ids))
+        img_rows = db_query(
+            f"SELECT id, post_id, filename, sort_order "
+            f"FROM post_images WHERE post_id IN ({placeholders}) ORDER BY sort_order",
+            post_ids
+        )
+        img_map = {}
+        for ir in img_rows:
+            img_map.setdefault(ir['post_id'], []).append({
+                'id': ir['id'],
+                'filename': ir['filename'],
+                'sort_order': ir['sort_order']
+            })
+        for row in rows:
+            row['images'] = img_map.get(row['id'], [])
 
     return cors_response({'status': 'ok', 'posts': rows})
 
