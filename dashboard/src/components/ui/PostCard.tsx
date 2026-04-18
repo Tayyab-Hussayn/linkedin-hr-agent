@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { ThumbsUp, Edit3, ThumbsDown, Loader2, Clock, Copy, Check } from 'lucide-react'
-import { Post } from '@/lib/types'
+import { useState, useEffect, useRef } from 'react'
+import { ThumbsUp, Edit3, ThumbsDown, Loader2, Clock, Copy, Check, Paperclip, X } from 'lucide-react'
+import { Post, PostImage } from '@/lib/types'
 import { formatRelativeTime, getStatusColor, getPillarColor, cn } from '@/lib/utils'
+import { api } from '@/lib/api'
+import { useAppContext } from '@/context/AppContext'
 import { Sheet } from './Sheet'
 
 interface PostCardProps {
@@ -32,6 +34,63 @@ export function PostCard({
   const [customTime, setCustomTime] = useState('')
   const [copied, setCopied] = useState(false)
   const [showFullPost, setShowFullPost] = useState(false)
+
+  const MAX_IMAGES_PER_POST = 4
+  const [images, setImages] = useState<PostImage[]>(post.images || [])
+  const [isUploading, setIsUploading] = useState(false)
+  const { showToast } = useAppContext()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleAttachClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+
+    const remaining = MAX_IMAGES_PER_POST - images.length
+    if (files.length > remaining) {
+      showToast(`Can only add ${remaining} more image${remaining !== 1 ? 's' : ''}`, 'warning')
+      return
+    }
+
+    for (const file of files) {
+      if (file.size > 5 * 1024 * 1024) {
+        showToast(`"${file.name}" exceeds 5MB limit`, 'error')
+        return
+      }
+      if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
+        showToast(`"${file.name}" is not a supported format (JPEG, PNG, GIF)`, 'error')
+        return
+      }
+    }
+
+    setIsUploading(true)
+    try {
+      const result = await api.uploadPostImages(post.id, files)
+      if (result.status === 'ok' && result.images) {
+        setImages(prev => [...prev, ...result.images!])
+        showToast(`${files.length} image${files.length > 1 ? 's' : ''} attached`, 'success')
+      } else {
+        showToast(result.message || 'Upload failed', 'error')
+      }
+    } catch {
+      showToast('Failed to upload images', 'error')
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const handleDeleteImage = async (imageId: string) => {
+    const result = await api.deletePostImage(imageId)
+    if (result.status === 'ok') {
+      setImages(prev => prev.filter(img => img.id !== imageId))
+    } else {
+      showToast('Failed to remove image', 'error')
+    }
+  }
 
   function getDefaultSlotDisplay(): string {
     const now = new Date()
@@ -236,6 +295,39 @@ export function PostCard({
         <span>{wordCount} words</span>
       </div>
 
+      {/* Image Attachments */}
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {images.map((img) => (
+            <div key={img.id} className="relative group w-16 h-16 rounded-lg overflow-hidden border border-stroke">
+              <img
+                src={`${typeof window !== 'undefined' ? localStorage.getItem('api_url') || process.env.NEXT_PUBLIC_API_URL || 'https://api.byqalam.com' : ''}${img.url}`}
+                alt={img.original_name}
+                className="w-full h-full object-cover"
+              />
+              {showActions && (
+                <button
+                  onClick={() => handleDeleteImage(img.id)}
+                  className="absolute top-0.5 right-0.5 w-5 h-5 bg-black/70 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="w-3 h-3 text-white" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Hidden file input for image upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept="image/jpeg,image/png,image/gif"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+
       {/* Actions */}
       {showActions && (
         <div className="flex items-center gap-2">
@@ -258,6 +350,24 @@ export function PostCard({
             className="px-4 py-2.5 border border-stroke text-muted hover:border-accent/50 hover:text-accent rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Edit3 className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={handleAttachClick}
+            disabled={isApproving || isRejecting || isUploading || images.length >= MAX_IMAGES_PER_POST}
+            className="relative px-4 py-2.5 border border-stroke text-muted hover:border-accent/50 hover:text-accent rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title={images.length >= MAX_IMAGES_PER_POST ? 'Max 4 images' : 'Attach images'}
+          >
+            {isUploading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Paperclip className="w-4 h-4" />
+            )}
+            {images.length > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-accent text-bg text-xs rounded-full flex items-center justify-center font-bold">
+                {images.length}
+              </span>
+            )}
           </button>
 
           <button
@@ -493,6 +603,19 @@ export function PostCard({
               <p className="text-text-primary whitespace-pre-wrap leading-relaxed text-sm">
                 {post.content}
               </p>
+              {images.length > 0 && (
+                <div className="flex flex-wrap gap-3 mt-4">
+                  {images.map((img) => (
+                    <div key={img.id} className="rounded-lg overflow-hidden border border-stroke">
+                      <img
+                        src={`${typeof window !== 'undefined' ? localStorage.getItem('api_url') || process.env.NEXT_PUBLIC_API_URL || 'https://api.byqalam.com' : ''}${img.url}`}
+                        alt={img.original_name}
+                        className="max-h-48 object-contain"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Footer */}
