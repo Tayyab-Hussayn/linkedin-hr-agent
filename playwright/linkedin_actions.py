@@ -109,7 +109,7 @@ async def run(args: dict):
 
             result = None
             if action == "post":
-                result = await do_post(page, args["content"])
+                result = await do_post(page, args["content"], args.get("image_paths"))
             elif action == "comment":
                 result = await do_comment(page, args["post_url"], args["comment"])
             elif action == "react":
@@ -166,7 +166,7 @@ async def ensure_logged_in(page, email: str, password: str) -> bool:
 
 
 # ─── Post ─────────────────────────────────────────────────────────────────────
-async def do_post(page, content: str) -> str:
+async def do_post(page, content: str, image_paths: list = None) -> str:
     # Status update: publishing started
     print(json.dumps({"status_update": "publishing"}), flush=True)
 
@@ -231,6 +231,75 @@ async def do_post(page, content: str) -> str:
         await start_btn.click()
         await random_delay(2, 3)
         print("[STEP 2 DONE] Clicked Start a post", file=sys.stderr)
+
+        # STEP 2.5 - Upload images if provided
+        if image_paths:
+            print(f"[STEP 2.5 START] Uploading {len(image_paths)} image(s)", file=sys.stderr)
+            try:
+                # Find the media/image button in the post composer toolbar
+                media_btn = None
+
+                # Try aria-label selectors for the image/photo button
+                for selector in [
+                    'button[aria-label="Add a photo"]',
+                    'button[aria-label="Add media"]',
+                    'button[aria-label="Add a image"]',
+                    'button[aria-label="Photo"]',
+                    '.share-creation-state__action-btn--media',
+                    'button.image-sharing-detour-button',
+                ]:
+                    try:
+                        btn = page.locator(selector).first
+                        if await btn.count() > 0:
+                            await btn.wait_for(state="visible", timeout=5000)
+                            media_btn = btn
+                            print(f"[STEP 2.5] Found media button: {selector}", file=sys.stderr)
+                            break
+                    except Exception:
+                        continue
+
+                if not media_btn:
+                    # Fallback: try finding by icon/svg in toolbar
+                    try:
+                        media_btn = page.locator('[data-test-icon="image-medium"]').first
+                        await media_btn.wait_for(state="visible", timeout=3000)
+                        print("[STEP 2.5] Found media button via data-test-icon", file=sys.stderr)
+                    except Exception:
+                        pass
+
+                if media_btn:
+                    await random_delay(0.5, 1.0)
+
+                    # Use file chooser pattern — click media button and handle dialog
+                    async with page.expect_file_chooser(timeout=10000) as fc_info:
+                        await media_btn.click()
+
+                    file_chooser = await fc_info.value
+                    await file_chooser.set_files(image_paths)
+
+                    print(f"[STEP 2.5] Files set: {image_paths}", file=sys.stderr)
+
+                    # Wait for upload thumbnails to appear
+                    await random_delay(3, 5)
+
+                    # Verify images loaded by checking for image preview elements
+                    try:
+                        await page.wait_for_selector(
+                            '.share-creation-state__image-container, '
+                            '.media-preview, '
+                            'img[class*="image-sharing"]',
+                            timeout=15000
+                        )
+                        print("[STEP 2.5 DONE] Images uploaded to composer", file=sys.stderr)
+                    except Exception:
+                        print("[STEP 2.5 WARN] Could not verify image previews, continuing anyway", file=sys.stderr)
+
+                    await random_delay(1, 2)
+                else:
+                    print("[STEP 2.5 WARN] Media button not found — posting text-only", file=sys.stderr)
+
+            except Exception as e:
+                print(f"[STEP 2.5 WARN] Image upload failed: {e} — posting text-only", file=sys.stderr)
 
         # STEP 3 - Wait for and click the text editor
         editor = None
