@@ -345,14 +345,6 @@ export function PostCard({
           </button>
 
           <button
-            onClick={() => onEdit?.(post)}
-            disabled={isApproving || isRejecting}
-            className="px-4 py-2.5 border border-stroke text-muted hover:border-accent/50 hover:text-accent rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Edit3 className="w-4 h-4" />
-          </button>
-
-          <button
             onClick={handleAttachClick}
             disabled={isApproving || isRejecting || isUploading || images.length >= MAX_IMAGES_PER_POST}
             className="relative px-4 py-2.5 border border-stroke text-muted hover:border-accent/50 hover:text-accent rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -368,6 +360,14 @@ export function PostCard({
                 {images.length}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={() => onEdit?.(post)}
+            disabled={isApproving || isRejecting}
+            className="px-4 py-2.5 border border-stroke text-muted hover:border-accent/50 hover:text-accent rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Edit3 className="w-4 h-4" />
           </button>
 
           <button
