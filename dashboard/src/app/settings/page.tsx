@@ -21,7 +21,6 @@ export default function SettingsPage() {
   const [linkedinPassword, setLinkedinPassword] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
-  const [apiUrl, setApiUrl] = useState('')
 
   // Content profile fields
   const [niche, setNiche] = useState('')
@@ -54,13 +53,6 @@ export default function SettingsPage() {
   const loadProfile = async () => {
     setLoading(true)
     try {
-      // Load API URL from localStorage
-      if (typeof window !== 'undefined') {
-        const storedApiUrl = localStorage.getItem('api_url') ||
-          process.env.NEXT_PUBLIC_API_URL || 'https://api.byqalam.com'
-        setApiUrl(storedApiUrl)
-      }
-
       const user = auth.getUser()
       const clientId = user?.client_id
       if (!clientId) return
@@ -99,11 +91,6 @@ export default function SettingsPage() {
   const saveAccountSettings = async () => {
     setSaving(true)
     try {
-      // Save API URL to localStorage
-      if (typeof window !== 'undefined' && apiUrl) {
-        localStorage.setItem('api_url', apiUrl)
-      }
-
       const updates: Record<string, any> = {}
       if (linkedinEmail) updates.linkedin_email = linkedinEmail
       if (linkedinPassword) updates.linkedin_password = linkedinPassword
@@ -275,35 +262,6 @@ export default function SettingsPage() {
                 className="w-full border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent bg-surface text-text-primary" style={{ padding: '12px 16px', height: '44px' }}
               />
             </div>
-          </div>
-
-          <div className="bg-surface rounded-2xl border border-stroke p-6 space-y-4">
-            <h2 className="font-semibold text-text-primary">API Server</h2>
-            <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">
-                API Server URL
-              </label>
-              <input
-                type="text"
-                value={apiUrl}
-                onChange={e => setApiUrl(e.target.value)}
-                placeholder="http://localhost:5050"
-                className="w-full border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent bg-surface text-text-primary" style={{ padding: '12px 16px', height: '44px' }}
-              />
-              <p className="text-xs text-muted mt-1">
-                URL of your PostFlow API server
-              </p>
-            </div>
-            <button
-              onClick={async () => {
-                const ok = await api.testConnection()
-                showMessage(ok ? 'success' : 'error',
-                  ok ? 'Connection successful' : 'Connection failed')
-              }}
-              className="w-full py-2 border border-stroke rounded-lg text-sm font-medium text-text-primary hover:bg-bg"
-            >
-              Test Connection
-            </button>
           </div>
 
           <button
