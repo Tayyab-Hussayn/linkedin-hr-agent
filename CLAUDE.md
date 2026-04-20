@@ -113,6 +113,7 @@ linkedin-hr-agent/
 │   ├── queue_worker_v5.py     # Scheduled post publisher (uses Flask API)
 │   ├── prompt_builder.py      # AI prompt templates per niche
 │   ├── humanizer.py           # Delay/behavior utilities
+│   ├── uploads/               # User-uploaded post images (served by Flask, gitignored except .gitkeep)
 │   └── requirements.txt       # playwright, flask, requests, psycopg2, etc.
 │
 ├── database/
@@ -204,7 +205,7 @@ The Flask server is the **single API gateway**. All DB access goes through it.
 - `POST /auth/change-password` — Change password
 
 ### Dashboard Endpoints
-- `GET /api/posts?status=queue|scheduled|history&limit=20` — Get posts by status
+- `GET /api/posts?status=queue|scheduled|history&limit=20` — Get posts by status (includes `images` array per post)
 - `GET /api/stats` — Stats + plan info (pending, approved, published, generated_today, plan_name, etc.)
 - `POST /api/approve` — Approve/reject/edit a post (auto-computes scheduled_for if not provided)
 - `POST /api/publish-now` — Set scheduled_for to NOW() for immediate publishing
@@ -212,12 +213,20 @@ The Flask server is the **single API gateway**. All DB access goes through it.
 - `GET /api/client-profile/<id>` — Get client profile with dynamic prompts
 - `PUT /api/client-profile/<id>` — Update client profile
 - `GET /api/niches` — Get available niches with defaults
-- `POST /api/generate-now` — Trigger n8n content generation webhook
+- `POST /api/generate-now` — Trigger n8n content generation webhook. Returns 403 if `auto_gen_enabled = false` for the client. Check this flag from DB before calling n8n.
 - `GET /api/events` — SSE stream for real-time updates
 - `POST /api/notify` — Called by n8n to broadcast events to dashboard
 
+### Image Endpoints
+- `POST /api/posts/<post_id>/images` — Upload images (multipart/form-data, field: `images[]`). Max 4 images per post, 5MB each, JPEG/PNG/GIF only. Validates post ownership.
+- `GET /api/posts/<post_id>/images` — List images for a post
+- `GET /api/images/<image_id>` — Serve image file (**no auth required** — used directly in `<img src>`)
+- `DELETE /api/images/<image_id>` — Delete image file + DB row, reorders remaining by sort_order
+
+**Image upload from dashboard:** Use FormData with `files.forEach(f => fd.append('images[]', f))`. Do NOT set `Content-Type` header — browser sets it with multipart boundary. Inject `Authorization` header manually (not via apiFetch default).
+
 ### Worker Endpoints (called by queue_worker_v5.py)
-- `GET /api/worker/due-posts` — Posts where scheduled_for <= NOW(), approved+draft, retry < 3
+- `GET /api/worker/due-posts` — Posts where scheduled_for <= NOW(), approved+draft, retry < 3 (includes `images` array with id, filename, sort_order)
 - `GET /api/worker/upcoming-posts` — Future scheduled posts for display
 - `POST /api/worker/mark-publishing` — Atomic lock (draft → publishing)
 - `POST /api/worker/mark-published` — Set published + broadcast SSE event
@@ -274,6 +283,30 @@ Toasts are managed in `AppContext.tsx` (shared across all pages):
 - Auth endpoints (`login`, `register`) use raw `fetch()` (no JWT needed)
 - All other endpoints use `apiFetch()` for automatic session handling
 - All responses safely parsed (text first, then JSON)
+- `uploadPostImages(postId, files)` — FormData upload with manual JWT header, no Content-Type
+- `deletePostImage(imageId)` — DELETE via apiFetch
+
+### PostImage Type (types.ts)
+```typescript
+export interface PostImage {
+  id: string
+  original_name: string
+  mime_type: string
+  size_bytes: number
+  sort_order: number
+  url: string  // /api/images/<id>
+}
+```
+`Post` interface has `images?: PostImage[]` — populated by `/api/posts` response.
+
+### PostCard — Image Attach UI
+- Paperclip button (📎 `Attach`) in action row — button order: `[Approve] [📎 Attach] [✏️ Edit] [Reject]`
+- Attach button disabled when `images.length >= 4` or `isUploading`
+- Hidden `<input type="file" multiple accept="image/jpeg,image/png,image/gif">` triggered by button click
+- Client-side validation: max 5MB per file, JPEG/PNG/GIF only, total images ≤ 4
+- Thumbnails shown below post meta row — visible in all views (queue/scheduled/history), delete (×) button only visible when `showActions` is true
+- Image modal: full images shown after post content in the full-post modal
+- State is local to PostCard — `images` initialized from `post.images || []`, updated on upload/delete
 
 ### Error Reporter (errorReporter.ts)
 - `reportError(message, details)` — fire-and-forget, never throws
@@ -332,7 +365,13 @@ This matches the login page input size and is the established pattern across all
 
 **JWT handling:** Token is read dynamically on every API call via `get_auth_token()` — not cached at startup. This allows token refresh without restarting the worker. Checks env var first, then falls back to `qalam_token.txt` file. API 401 responses are logged with a clear message but don't crash the worker.
 
-**Flow:** Poll `/api/worker/due-posts` → lock via `/api/worker/mark-publishing` → run Playwright subprocess → report via `/api/worker/mark-published` or `/api/worker/mark-failed`
+**Flow:** Poll `/api/worker/due-posts` → lock via `/api/worker/mark-publishing` → download images to temp dir → run Playwright subprocess → report via `/api/worker/mark-published` or `/api/worker/mark-failed` → cleanup temp images
+
+**Image handling in worker:**
+- `download_post_images(post)` — streams each image from `/api/images/<id>` to `tempfile.mkdtemp()`, returns list of local file paths
+- `cleanup_temp_images(paths)` — `shutil.rmtree` on temp dir. Always runs in `finally` block.
+- `image_paths` is defined before the subprocess `try` block so `finally` can always clean up
+- Image paths passed to Playwright subprocess in `"image_paths"` key of the payload
 
 **Retry logic:** 10min → 30min → 60min backoff. Permanent fail after 3 attempts.
 
@@ -344,6 +383,7 @@ Key tables:
 - **plans** — Subscription tiers (daily_post_limit, can_schedule, can_analytics, can_generate_now)
 - **client_effective_limits** — View joining clients + plans with COALESCE logic
 - **posts** — Content (content, topic_pillar, approval_status, post_status, scheduled_for, retry_count)
+- **post_images** — User-attached images per post (id UUID PK, post_id FK → posts ON DELETE CASCADE, filename, original_name, mime_type, size_bytes, sort_order, created_at). Index: `idx_post_images_post_id`
 - **feedback** — Error reports + user ratings (type: `error`|`rating`, rating 1-5, message, error_details JSONB, app_version, os_info)
 
 **Post lifecycle:** `pending/draft` → `approved/draft` (with scheduled_for) → `publishing` → `published`
@@ -495,6 +535,11 @@ Lightweight, custom system. Patches the LinkedIn automation script without a ful
 
 **Version tracking:** First line of `playwright/linkedin_actions.py` must be `# version: X.Y.Z`. Local version stored in `linkedin_actions_version.txt` in resource dir. Bump version comment when shipping script fixes.
 
+**`do_post` signature:** `async def do_post(page, content: str, image_paths: list = None) -> str`
+- If `image_paths` is provided, clicks the LinkedIn media button, uses `page.expect_file_chooser()` + `file_chooser.set_files(image_paths)` to attach images before posting
+- Tries 6 selectors for the media button; graceful fallback to text-only if any exception occurs
+- Remember to sync `src-tauri/resources/linkedin_actions.py` after any changes to `playwright/linkedin_actions.py`
+
 **Fail-safe:** Network errors, checksum mismatches, or write failures are logged and skipped — app always launches with the existing script.
 
 ### Type 2 — Full App Update (Tauri Updater Plugin)
@@ -553,8 +598,11 @@ Production Flask server requires these env vars:
 - **PostgreSQL port** — 5433 (not 5432)
 - **Flask is the gateway** — Dashboard and worker both talk to Flask, never directly to DB
 - **SSE for real-time** — Only LayoutWrapper connects to SSE; pages react via `refreshSignal` from AppContext
+- **Image uploads** — `playwright/uploads/` stores all user images. Filenames are UUID-based. Directory is gitignored (`.gitkeep` committed). Served via `GET /api/images/<id>` with no auth. Deleted on post deletion via `ON DELETE CASCADE`.
+- **PostCard button order** — `[Approve] [📎 Attach] [✏️ Edit] [Reject]` — Attach is left of Edit
 - **PWA/ServiceWorker** — Skipped inside Tauri (`__TAURI__` window check). Only active in browser deployments.
-- **n8n role reduced** — Only handles AI content generation (called via webhook from Flask)
+- **n8n role** — Only handles AI content generation. n8n workflow 02 ("Daily Content Generation") runs on its own cron (8AM & 6PM). It accesses the DB **directly** (not through Flask). The flow is: cron → Fetch Active Clients (direct DB, includes `auto_gen_enabled`) → Check Posts Today → Decide Generation Plan (JS node checks `auto_gen_enabled` and skips if false; always generates exactly **1 post** per run) → Build Prompt → Flask `/api/client-profile` → AI → Save Posts (direct DB) → Flask `/api/notify`
+- **auto_gen_enabled** — Stored in `clients` table. Controls both scheduled n8n runs and manual "Generate Now". When false: n8n "Decide Generation Plan" returns `skip: true`; Flask `/api/generate-now` returns 403; dashboard shows a warning toast before any API call. Workflow 02 exports live in `n8n-workflows/` — edit the JSON and update `workflow_entity.nodes` in n8n's DB to apply changes without UI access.
 - **Timezone** — Tauri detects system timezone (`TZ` env → `/etc/timezone` → UTC); browser uses local timezone; worker uses `QALAM_TIMEZONE` env var
 - **GitHub repo** — Private. All download traffic goes through Flask proxy at `api.byqalam.com`
 - **Registration** — Does not set niche. Niche is configured during onboarding flow.
