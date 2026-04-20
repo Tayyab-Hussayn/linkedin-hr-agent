@@ -266,38 +266,39 @@ export default function ContentPage() {
           </div>
         </div>
 
-        {/* Generate Now Button */}
-        <button
-          onClick={handleGenerateNow}
-          disabled={isGenerating || !stats?.can_generate_now || (mounted && isLimitReached)}
-          className="w-full px-4 py-3 accent-gradient text-bg rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mb-3"
-        >
-          {isGenerating ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Generating...
-            </>
-          ) : !stats?.can_generate_now ? (
-            'Manual generation not available'
-          ) : isLimitReached ? (
-            'Daily limit reached'
-          ) : (
-            <>
-              <Sparkles className="w-5 h-5" />
-              Generate Now
-            </>
-          )}
-        </button>
+        {/* Action buttons — same row */}
+        <div className="flex gap-3">
+          <button
+            onClick={handleGenerateNow}
+            disabled={isGenerating || !stats?.can_generate_now || (mounted && isLimitReached)}
+            className="flex-1 px-4 py-3 accent-gradient text-bg rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Generating...
+              </>
+            ) : !stats?.can_generate_now ? (
+              'Not available'
+            ) : isLimitReached ? (
+              'Limit reached'
+            ) : (
+              <>
+                <Sparkles className="w-5 h-5" />
+                Generate Now
+              </>
+            )}
+          </button>
 
-        {/* Generate from Idea Button */}
-        <button
-          onClick={() => setShowIdeaModal(true)}
-          disabled={!stats?.can_generate_now || (mounted && isLimitReached)}
-          className="w-full px-4 py-3 bg-surface-2 border border-stroke text-text-primary rounded-xl font-medium hover:border-accent/50 hover:text-accent transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          <Lightbulb className="w-5 h-5" />
-          Generate from Idea
-        </button>
+          <button
+            onClick={() => setShowIdeaModal(true)}
+            disabled={!stats?.can_generate_now || (mounted && isLimitReached)}
+            className="flex-1 px-4 py-3 bg-surface-2 border border-stroke text-text-primary rounded-xl font-medium hover:border-accent/50 hover:text-accent transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            <Lightbulb className="w-5 h-5" />
+            From Idea
+          </button>
+        </div>
       </div>
 
       {/* Scheduled Posts Card */}
