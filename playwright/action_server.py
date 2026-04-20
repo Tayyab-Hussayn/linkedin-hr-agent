@@ -666,6 +666,9 @@ def get_stats_internal(client_id=None):
             COUNT(CASE WHEN p.approval_status = 'pending' THEN 1 END)::int as pending,
             COUNT(CASE WHEN p.approval_status = 'approved'
                 AND p.post_status NOT IN ('published','skipped') THEN 1 END)::int as approved,
+            COUNT(CASE WHEN p.approval_status = 'approved'
+                AND p.post_status = 'draft'
+                AND p.scheduled_for IS NOT NULL THEN 1 END)::int as scheduled,
             COUNT(CASE WHEN p.post_status = 'published' THEN 1 END)::int as published,
             COUNT(CASE WHEN p.approval_status = 'rejected' THEN 1 END)::int as rejected,
             COUNT(*)::int as total,

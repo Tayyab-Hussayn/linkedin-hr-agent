@@ -29,6 +29,7 @@ export interface Stats {
   type: string
   pending: number
   approved: number
+  scheduled: number
   published: number
   rejected: number
   total: number

@@ -80,7 +80,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       const stats = await api.getStats()
       setPendingCount(stats.pending || 0)
       setPublishedCount(stats.published || 0)
-      setScheduledCount(stats.approved || 0)
+      setScheduledCount(stats.scheduled || 0)
       setIsOnline(true)
     } catch (error) {
       setIsOnline(false)
