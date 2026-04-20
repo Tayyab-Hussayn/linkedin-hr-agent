@@ -140,6 +140,7 @@ export const api = {
       type: 'stats',
       pending: 0,
       approved: 0,
+      scheduled: 0,
       published: 0,
       rejected: 0,
       total: 0,
@@ -253,6 +254,25 @@ export const api = {
       }
     } catch (error) {
       console.error('Error submitting decision:', error)
+      throw error
+    }
+  },
+
+  // Trigger idea-based generation
+  generateFromIdea: async (idea: string) => {
+    try {
+      const res = await apiFetch(`${getApiUrl()}/api/generate-from-idea`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ idea })
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        try { throw new Error(JSON.parse(text).message) } catch { throw new Error('Failed to generate from idea') }
+      }
+      return {}
+    } catch (error) {
+      console.error('Error generating from idea:', error)
       throw error
     }
   },

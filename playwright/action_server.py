@@ -1101,6 +1101,38 @@ def generate_now():
         return cors_response({"status": "error", "message": str(e)}, 500)
 
 # ═══════════════════════════════════════════
+# ENDPOINT — POST /api/generate-from-idea
+# Triggers n8n generation using user's raw idea
+# ═══════════════════════════════════════════
+
+@app.route('/api/generate-from-idea', methods=['POST', 'OPTIONS'])
+@require_auth
+def generate_from_idea():
+    client_id = request.current_user['client_id']
+    body = request.get_json() or {}
+    idea = (body.get('idea') or '').strip()
+
+    if not idea:
+        return cors_response({'status': 'error', 'message': 'idea is required'}, 400)
+    if len(idea) < 5:
+        return cors_response({'status': 'error', 'message': 'Idea is too short'}, 400)
+    if len(idea) > 1000:
+        return cors_response({'status': 'error', 'message': 'Idea must be under 1000 characters'}, 400)
+
+    payload = json.dumps({"client_id": client_id, "idea": idea}).encode()
+    req = urllib.request.Request(
+        N8N_GENERATE_NOW_WEBHOOK,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return cors_response({"status": "ok", "message": "Idea-based generation started"})
+    except Exception as e:
+        return cors_response({"status": "error", "message": str(e)}, 500)
+
+# ═══════════════════════════════════════════
 # NEW ENDPOINT 7 — GET /api/client-profile/<client_id>
 # Returns full client profile with dynamic prompts
 # ═══════════════════════════════════════════
