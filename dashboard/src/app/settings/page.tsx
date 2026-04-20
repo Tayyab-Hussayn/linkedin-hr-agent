@@ -232,7 +232,7 @@ export default function SettingsPage() {
                 value={linkedinEmail}
                 onChange={e => setLinkedinEmail(e.target.value)}
                 placeholder="your@linkedin-email.com"
-                className="w-full px-4 py-2.5 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
+                className="w-full border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent bg-surface text-text-primary" style={{ padding: '12px 16px', height: '44px' }}
               />
             </div>
             <div>
@@ -244,7 +244,7 @@ export default function SettingsPage() {
                 value={linkedinPassword}
                 onChange={e => setLinkedinPassword(e.target.value)}
                 placeholder="Enter new password to update"
-                className="w-full px-4 py-2.5 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
+                className="w-full border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent bg-surface text-text-primary" style={{ padding: '12px 16px', height: '44px' }}
               />
             </div>
           </div>
@@ -260,7 +260,7 @@ export default function SettingsPage() {
                 value={currentPassword}
                 onChange={e => setCurrentPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-4 py-2.5 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
+                className="w-full border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent bg-surface text-text-primary" style={{ padding: '12px 16px', height: '44px' }}
               />
             </div>
             <div>
@@ -272,7 +272,7 @@ export default function SettingsPage() {
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
                 placeholder="Min 8 characters"
-                className="w-full px-4 py-2.5 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
+                className="w-full border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent bg-surface text-text-primary" style={{ padding: '12px 16px', height: '44px' }}
               />
             </div>
           </div>
@@ -288,7 +288,7 @@ export default function SettingsPage() {
                 value={apiUrl}
                 onChange={e => setApiUrl(e.target.value)}
                 placeholder="http://localhost:5050"
-                className="w-full px-4 py-2.5 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
+                className="w-full border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent bg-surface text-text-primary" style={{ padding: '12px 16px', height: '44px' }}
               />
               <p className="text-xs text-muted mt-1">
                 URL of your PostFlow API server
@@ -351,7 +351,7 @@ export default function SettingsPage() {
                   value={jobTitle}
                   onChange={e => setJobTitle(e.target.value)}
                   placeholder="e.g. HR Director"
-                  className="w-full px-3 py-2 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
+                  className="w-full border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent bg-surface text-text-primary" style={{ padding: '12px 16px', height: '44px' }}
                 />
               </div>
               <div>
@@ -361,7 +361,7 @@ export default function SettingsPage() {
                   value={companyName}
                   onChange={e => setCompanyName(e.target.value)}
                   placeholder="e.g. Acme Corp"
-                  className="w-full px-3 py-2 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
+                  className="w-full border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent bg-surface text-text-primary" style={{ padding: '12px 16px', height: '44px' }}
                 />
               </div>
             </div>
@@ -375,7 +375,7 @@ export default function SettingsPage() {
                 onChange={e => setYearsExp(parseInt(e.target.value) || 1)}
                 min="1"
                 max="50"
-                className="w-full px-3 py-2 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
+                className="w-full border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent bg-surface text-text-primary" style={{ padding: '12px 16px', height: '44px' }}
               />
             </div>
           </div>
@@ -398,7 +398,7 @@ export default function SettingsPage() {
                 onChange={e => setNewPillar(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addPillar()}
                 placeholder="Add a topic..."
-                className="flex-1 px-3 py-2 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
+                className="flex-1 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent bg-surface text-text-primary" style={{ padding: '12px 16px', height: '44px' }}
               />
               <button
                 onClick={addPillar}
@@ -418,7 +418,7 @@ export default function SettingsPage() {
                 value={tone}
                 onChange={e => setTone(e.target.value)}
                 placeholder="e.g. Empathetic, data-driven, direct"
-                className="w-full px-3 py-2 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
+                className="w-full border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent bg-surface text-text-primary" style={{ padding: '12px 16px', height: '44px' }}
               />
             </div>
             <div>
@@ -428,7 +428,7 @@ export default function SettingsPage() {
                 value={targetAudience}
                 onChange={e => setTargetAudience(e.target.value)}
                 placeholder="e.g. HR managers, startup founders"
-                className="w-full px-3 py-2 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
+                className="w-full border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent bg-surface text-text-primary" style={{ padding: '12px 16px', height: '44px' }}
               />
             </div>
             <div>
@@ -438,7 +438,7 @@ export default function SettingsPage() {
                 value={writingStyle}
                 onChange={e => setWritingStyle(e.target.value)}
                 placeholder="e.g. Story-driven with actionable insights"
-                className="w-full px-3 py-2 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
+                className="w-full border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent bg-surface text-text-primary" style={{ padding: '12px 16px', height: '44px' }}
               />
             </div>
             <div>
@@ -448,7 +448,7 @@ export default function SettingsPage() {
                 value={uniqueAngle}
                 onChange={e => setUniqueAngle(e.target.value)}
                 placeholder="e.g. Bridges people strategy with business results"
-                className="w-full px-3 py-2 border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent"
+                className="w-full border border-stroke rounded-lg text-sm focus:outline-none focus:border-accent bg-surface text-text-primary" style={{ padding: '12px 16px', height: '44px' }}
               />
             </div>
           </div>
