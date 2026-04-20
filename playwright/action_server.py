@@ -1074,6 +1074,16 @@ def update_settings():
 def generate_now():
     client_id = request.current_user['client_id']
 
+    # Respect auto_gen_enabled — block manual generation when user has paused it
+    client_rows = db_query(
+        "SELECT auto_gen_enabled FROM clients WHERE id = %s", [client_id]
+    )
+    if client_rows and client_rows[0].get('auto_gen_enabled') is False:
+        return cors_response({
+            'status': 'error',
+            'message': 'Auto-generation is paused. Enable it in settings first.'
+        }, 403)
+
     payload = json.dumps({"client_id": client_id}).encode()
     req = urllib.request.Request(
         N8N_GENERATE_NOW_WEBHOOK,

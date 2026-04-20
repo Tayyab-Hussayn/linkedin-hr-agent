@@ -71,6 +71,12 @@ export default function ContentPage() {
   }
 
   const handleGenerateNow = async () => {
+    // Check if auto-gen is paused
+    if (!autoGenEnabled) {
+      showToast('Auto-generation is paused. Enable it first.', 'warning')
+      return
+    }
+
     // Check if generation is allowed by plan
     if (!stats?.can_generate_now) {
       showToast('Manual generation not available in your plan', 'warning')

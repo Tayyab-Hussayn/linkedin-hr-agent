@@ -1,0 +1,415 @@
+{
+  "name": "02 - Daily Content Generation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "0 18 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1952,
+        832
+      ],
+      "id": "ee7cc481-5e37-4421-85e3-a9d518f7cd08",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT c.id as client_id, c.name, c.linkedin_email, c.linkedin_password, c.content_mode, c.timezone, c.active_hours_start, c.active_hours_end, COALESCE(c.auto_gen_enabled, true) as auto_gen_enabled FROM clients c WHERE c.is_active = true ORDER BY c.created_at ASC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1952,
+        1200
+      ],
+      "id": "f20c16be-f7f1-47ff-ac6d-e40ae358992f",
+      "name": "Fetch Active Clients",
+      "credentials": {
+        "postgres": {
+          "id": "JsQ6LXHQkw3ru7C2",
+          "name": "LinkedIn Agent DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1632,
+        832
+      ],
+      "id": "65b04f40-7320-41fb-9025-5d16002915ad",
+      "name": "Loop Over Clients"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  cel.daily_post_limit,\n  COUNT(p.id) as posts_today,\n  COUNT(CASE WHEN p.approval_status = 'pending' THEN 1 END) as pending_approvals\nFROM client_effective_limits cel\nLEFT JOIN posts p ON p.client_id = cel.client_id\n  AND p.created_at >= CURRENT_DATE\nWHERE cel.client_id = '{{ $json.client_id }}'\nGROUP BY cel.daily_post_limit;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1232,
+        848
+      ],
+      "id": "baa25b38-8e35-4088-a19b-a8417ccc52b2",
+      "name": "Check Posts Today",
+      "credentials": {
+        "postgres": {
+          "id": "JsQ6LXHQkw3ru7C2",
+          "name": "LinkedIn Agent DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const clientData = $('Loop Over Clients').item.json;\nconst postsToday = parseInt($input.first().json.posts_today || 0) || 0;\nconst pendingApprovals = parseInt($input.first().json.pending_approvals || 0) || 0;\nconst dailyLimit = parseInt($input.first().json.daily_post_limit || 3) || 3;\n\nconsole.log('CLIENT:', clientData.client_id, '| posts_today:', postsToday, '| daily_limit:', dailyLimit);\n\n// CHANGE 2: Respect auto_gen_enabled flag \u2014 skip if user has paused auto-generation\nconst autoGenEnabled = clientData.auto_gen_enabled;\nif (autoGenEnabled === false) {\n  return [{ json: {\n    skip: true,\n    reason: 'Auto-generation disabled by user',\n    client_id: clientData.client_id\n  }}];\n}\n\nif (postsToday >= dailyLimit) {\n  return [{ json: { skip: true, reason: 'Daily limit reached', client_id: clientData.client_id } }];\n}\n\nif (pendingApprovals >= 3) {\n  return [{ json: { skip: true, reason: 'Too many pending approvals', client_id: clientData.client_id } }];\n}\n\nconst remaining = dailyLimit - postsToday;\n// CHANGE 1: Always generate exactly 1 post per run (was: 2 in morning, 1 in evening)\nconst targetCount = Math.min(1, remaining);\n\nreturn [{\n  json: {\n    skip: false,\n    client_id: clientData.client_id,\n    name: clientData.name,\n    target_post_count: targetCount,\n    posts_today: postsToday,\n    daily_limit: dailyLimit,\n    run_type: 'standard'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -976,
+        848
+      ],
+      "id": "2cabbe3d-173a-4ed6-9102-eba981970b89",
+      "name": "Decide Generation Plan"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "skip-check",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -752,
+        848
+      ],
+      "id": "e450ac8c-8637-49a2-a641-efefe63172d9",
+      "name": "Should Generate?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fetch dynamic client profile from Flask API\n// This replaces all hardcoded HR prompt logic\n\nconst data = $input.first().json;\nconst clientId = data.client_id;\nconst apiUrl = `http://localhost:5050/api/client-profile/${clientId}`;\n\nlet profileData;\ntry {\n  const response = await fetch(apiUrl);\n  if (!response.ok) {\n    throw new Error(`Flask API returned ${response.status}`);\n  }\n  profileData = await response.json();\n} catch(e) {\n  console.error('Failed to fetch client profile:', e.message);\n  // Fallback to basic prompt if Flask is down\n  profileData = {\n    status: 'ok',\n    name: data.name,\n    system_prompt: `You are a LinkedIn content writer for ${data.name}. Write engaging professional posts. Return valid JSON array only.`,\n    topic_pillars: ['Professional Growth', 'Industry Insights', 'Leadership', 'Career Tips', 'Workplace Culture'],\n    post_formats: ['story', 'insight', 'tips']\n  };\n}\n\n// Select pillars for this run \u2014 rotate by day to avoid repetition\nconst pillars = profileData.topic_pillars || [];\nconst formats = profileData.post_formats || ['story', 'insight', 'tips'];\nconst targetCount = data.target_post_count || 1;\n\nconst dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);\nconst selectedPillars = [];\nconst selectedFormats = [];\n\nfor (let i = 0; i < targetCount; i++) {\n  selectedPillars.push(pillars[(dayOfYear + i) % pillars.length]);\n  selectedFormats.push(formats[(dayOfYear + i) % formats.length]);\n}\n\n// Build user prompt using selected pillars and formats\nconst postsRequest = selectedPillars.map((pillar, i) => \n  `Post ${i+1}: Topic=\"${pillar}\" Format=\"${selectedFormats[i]}\"`\n).join('\\n');\n\nconst userPrompt = `Create ${targetCount} LinkedIn post(s) as specified below.\n\nPOSTS TO GENERATE:\n${postsRequest}\n\nFORMAT GUIDE:\n- story: Personal experience \u2192 tension \u2192 lesson (150-250 words)\n- insight: Bold observation \u2192 why it matters \u2192 fresh perspective (100-200 words)\n- tips: Problem/promise \u2192 3-5 specific actionable tips \u2192 outcome (150-250 words)\n- controversial: Unpopular opinion \u2192 acknowledge common belief \u2192 your reasoning (150-250 words)\n- lessons: Mistake/challenge \u2192 what happened \u2192 2-3 lessons learned (150-250 words)\n\nQUALITY RULES:\n1. First line MUST stop the scroll\n2. Short paragraphs \u2014 max 3 lines, use line breaks\n3. Never start with the word \"I\"\n4. Sound human \u2014 vary sentence length\n5. No cliches: 'game-changer', 'excited to share', 'in today's world'\n6. No hashtags, no emojis\n7. Each post on a DIFFERENT topic\n\nReturn a JSON array with exactly ${targetCount} object(s):\n[\n  {\n    \"content\": \"complete post text with \\\\n for line breaks\",\n    \"topic_pillar\": \"exact topic from above\",\n    \"post_format\": \"exact format from above\",\n    \"hook\": \"just the first line\",\n    \"estimated_words\": 150\n  }\n]`;\n\nreturn [{\n  json: {\n    system_prompt: profileData.system_prompt,\n    user_prompt: userPrompt,\n    client_id: data.client_id,\n    target_post_count: targetCount,\n    selected_pillars: selectedPillars,\n    selected_formats: selectedFormats\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -496,
+        832
+      ],
+      "id": "9d1ef82a-a1f9-4f48-a7c2-dfbe25a7c7fe",
+      "name": "Build Generation Prompt"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.user_prompt }}",
+        "options": {
+          "systemMessage": "={{ $json.system_prompt }}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -256,
+        832
+      ],
+      "id": "1f4a626e-7220-4ee0-afe1-1609dd145c2f",
+      "name": "Post Generator Agent"
+    },
+    {
+      "parameters": {
+        "model": "gemini-3-flash-preview:latest",
+        "options": {
+          "temperature": 0.85
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -256,
+        1088
+      ],
+      "id": "cf17d912-657b-4ad0-8d97-26933370cfff",
+      "name": "Ollama Post Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "Q1IrZg669IjRF5wj",
+          "name": "Ollama local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI response into individual post objects\nconst agentOutput = $input.first().json.output || $input.first().json.text || '';\nconst generationData = $('Build Generation Prompt').item.json;\n\nconsole.log('Raw AI output length:', agentOutput.length);\n\n// Clean the output \u2014 remove markdown code blocks if present\nlet cleanOutput = agentOutput\n  .replace(/```json\\s*/gi, '')\n  .replace(/```\\s*/g, '')\n  .trim();\n\n// Extract JSON array\nconst jsonMatch = cleanOutput.match(/\\[\\s*\\{[\\s\\S]*\\}\\s*\\]/);\nif (!jsonMatch) {\n  console.error('No JSON array found in output:', cleanOutput.substring(0, 200));\n  return [{ json: { error: 'No valid JSON in AI response', raw: cleanOutput.substring(0, 500) } }];\n}\n\nlet posts;\ntry {\n  posts = JSON.parse(jsonMatch[0]);\n} catch(e) {\n  console.error('JSON parse error:', e.message);\n  return [{ json: { error: 'Failed to parse AI response', raw: cleanOutput.substring(0, 500) } }];\n}\n\nif (!Array.isArray(posts) || posts.length === 0) {\n  return [{ json: { error: 'Empty posts array from AI' } }];\n}\n\n// Map each post with client context\nreturn posts.map(post => ({\n  json: {\n    client_id: generationData.client_id,\n    content: post.content || '',\n    topic_pillar: post.topic_pillar || generationData.selected_pillars[0] || 'General',\n    post_format: post.post_format || 'insight',\n    hook: post.hook || '',\n    estimated_words: post.estimated_words || 0\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        128,
+        832
+      ],
+      "id": "6dc6df81-85bb-40d7-8e47-c40416c3e194",
+      "name": "Parse Generated Posts"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO posts (\n  client_id, content, topic_pillar, post_format,\n  approval_status, post_status, created_at\n) VALUES (\n  '{{ $json.client_id }}',\n  '{{ $json.content.replace(/\\\\/g, \"\\\\\\\\\").replace(/'/g, \"''\") }}',\n  '{{ $json.topic_pillar }}',\n  '{{ $json.post_format }}',\n  'pending',\n  'draft',\n  NOW()\n)\nRETURNING id, client_id, topic_pillar, post_format, approval_status;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        384,
+        832
+      ],
+      "id": "7614a03b-88d6-4c71-8e65-d2dd1b055ad7",
+      "name": "Save Posts to DB",
+      "credentials": {
+        "postgres": {
+          "id": "JsQ6LXHQkw3ru7C2",
+          "name": "LinkedIn Agent DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const saved = $input.first().json;\nconsole.log(`\u2705 Post saved: ${saved.id} | client: ${saved.client_id}`);\n\n// Notify connected dashboard clients via SSE\ntry {\n  await fetch('http://localhost:5050/api/notify', {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({\n      event: 'new_posts',\n      client_id: saved.client_id,\n      count: 1\n    })\n  });\n} catch(e) {\n  console.log('Notify failed (non-critical):', e.message);\n}\n\nreturn [{ json: { success: true, post_id: saved.id } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        960
+      ],
+      "id": "593a6e91-5a7d-4b27-a9ed-b9d52e768bf9",
+      "name": "Log Success"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -2208,
+        1200
+      ],
+      "id": "8cb52237-ff47-45eb-a5e1-bf55ce9bc119",
+      "name": "When Executed by Another Workflow"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Active Clients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Active Clients": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Clients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Clients": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Check Posts Today",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Posts Today": {
+      "main": [
+        [
+          {
+            "node": "Decide Generation Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide Generation Plan": {
+      "main": [
+        [
+          {
+            "node": "Should Generate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Generate?": {
+      "main": [
+        [
+          {
+            "node": "Build Generation Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Clients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Generation Prompt": {
+      "main": [
+        [
+          {
+            "node": "Post Generator Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Post Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Post Generator Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Generator Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Generated Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Generated Posts": {
+      "main": [
+        [
+          {
+            "node": "Save Posts to DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Posts to DB": {
+      "main": [
+        [
+          {
+            "node": "Log Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Success": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Clients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Fetch Active Clients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "2e96f692-1c33-4692-a750-90783d744ed0",
+  "meta": {
+    "instanceId": "497400c4566cd6214d30d36fa048e8a348f529be3d0ded3902cce04e13760ef2"
+  },
+  "id": "OpbfcVAqKhOSapqy",
+  "tags": [
+    {
+      "updatedAt": "2026-02-26T03:22:51.363Z",
+      "createdAt": "2026-02-26T03:22:51.363Z",
+      "id": "zLaWGHaqV3mBrhzq",
+      "name": "Marked as complete"
+    }
+  ]
+}
