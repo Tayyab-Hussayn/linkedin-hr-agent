@@ -37,6 +37,11 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   }, [pathname, isPublicPage, router])
 
   useSSE({
+    onConnected: () => {
+      // SSE (re)connected — re-fetch everything so pages recover after server restart
+      fetchStats()
+      triggerRefresh()
+    },
     onNewPosts: () => {
       fetchStats() // Update pending count in sidebar
       triggerRefresh() // Signal pages to re-fetch

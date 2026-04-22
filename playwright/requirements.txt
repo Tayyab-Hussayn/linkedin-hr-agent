@@ -5,3 +5,5 @@ requests
 packaging
 PyJWT
 bcrypt
+gunicorn
+gevent
