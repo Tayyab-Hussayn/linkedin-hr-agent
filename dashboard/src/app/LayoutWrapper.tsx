@@ -13,6 +13,7 @@ import { useSSE } from '@/hooks/useSSE'
 import { api, getApiUrl } from '@/lib/api'
 import { auth } from '@/lib/auth'
 import { APP_VERSION } from '@/lib/version'
+import { saveTauriApiUrl } from '@/lib/tauri'
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -29,6 +30,16 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   // Pages that don't need auth
   const publicPages = ['/login', '/register', '/onboarding']
   const isPublicPage = publicPages.some(p => pathname?.startsWith(p))
+
+  // On mount, sync any custom API URL to the Tauri worker config file so the
+  // queue worker sidecar uses the correct server on the next app restart.
+  // This is a no-op when running in a browser (saveTauriApiUrl checks for Tauri).
+  useEffect(() => {
+    const customUrl = typeof window !== 'undefined'
+      ? localStorage.getItem('api_url')
+      : null
+    if (customUrl) saveTauriApiUrl(customUrl)
+  }, [])
 
   useEffect(() => {
     if (!isPublicPage && !auth.isLoggedIn()) {

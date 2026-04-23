@@ -112,28 +112,6 @@ export const api = {
     }
   },
 
-  // Get scheduled posts (approved, not yet published, with future scheduled_for)
-  getScheduledPosts: async (): Promise<Post[]> => {
-    try {
-      // Use history endpoint and filter for scheduled posts
-      const allPosts = await api.getPosts('history', 100)
-      // Show all scheduled posts that are approved, draft, and have scheduled_for
-      return allPosts.filter(p =>
-        p.approval_status === 'approved' &&
-        p.post_status === 'draft' &&
-        p.scheduled_for != null
-      ).sort((a, b) => {
-        // Sort by scheduled_for ascending (earliest first)
-        const dateA = new Date(a.scheduled_for!).getTime()
-        const dateB = new Date(b.scheduled_for!).getTime()
-        return dateA - dateB
-      })
-    } catch(e) {
-      console.error('Error fetching scheduled posts:', e)
-      return []
-    }
-  },
-
   // Get stats
   getStats: async (): Promise<Stats> => {
     const defaultStats: Stats = {
@@ -182,7 +160,7 @@ export const api = {
   getPillarStats: async (): Promise<PillarStat[]> => {
     try {
       const res = await apiFetch(
-        `${getN8nUrl()}/webhook/get-posts?status=pillar_stats`,
+        `${getApiUrl()}/api/analytics/pillars`,
         { cache: 'no-store', headers: getHeaders() }
       )
       if (!res.ok) return []
@@ -190,7 +168,7 @@ export const api = {
       if (!text || text.trim() === '') return []
       try {
         const data = JSON.parse(text)
-        return Array.isArray(data) ? data : []
+        return Array.isArray(data.pillars) ? data.pillars : []
       } catch {
         return []
       }
@@ -204,7 +182,7 @@ export const api = {
   getDailyActivity: async (days = 7): Promise<DailyActivity[]> => {
     try {
       const res = await apiFetch(
-        `${getN8nUrl()}/webhook/get-posts?status=daily_activity&days=${days}`,
+        `${getApiUrl()}/api/analytics/daily?days=${days}`,
         { cache: 'no-store', headers: getHeaders() }
       )
       if (!res.ok) return []
@@ -212,7 +190,7 @@ export const api = {
       if (!text || text.trim() === '') return []
       try {
         const data = JSON.parse(text)
-        return Array.isArray(data) ? data : []
+        return Array.isArray(data.activity) ? data.activity : []
       } catch {
         return []
       }

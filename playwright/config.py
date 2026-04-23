@@ -16,12 +16,10 @@ DB_CONFIG = {
 DB_URL = "postgresql://{user}:{password}@{host}:{port}/{database}".format(**DB_CONFIG)
 
 # App
-CLIENT_ID = "hr-pro-001"
 TIMEZONE = "Asia/Karachi"
-ENVIRONMENT = "development"
 
-# n8n
-N8N_BASE_URL = "http://localhost:5678"
+# n8n — URL must be set via N8N_BASE_URL env var in production
+N8N_BASE_URL = os.environ.get('N8N_BASE_URL', 'http://localhost:5678')
 N8N_GENERATE_NOW_WEBHOOK = f"{N8N_BASE_URL}/webhook/generate-now"
 N8N_APPROVAL_WEBHOOK = f"{N8N_BASE_URL}/webhook/post-approval"
 

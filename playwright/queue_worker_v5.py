@@ -46,7 +46,21 @@ else:
     # Running as regular Python script (development)
     PLAYWRIGHT_DIR = Path(__file__).parent.resolve()
 
+_debug = os.environ.get('QALAM_DEBUG', '').lower() in ('1', 'true', 'yes')
+
 print(f"[CONFIG] PLAYWRIGHT_DIR: {PLAYWRIGHT_DIR}", flush=True)
+
+# DATA_DIR: writable directory for auth token and config files.
+# In the Tauri desktop app, Tauri sets QALAM_DATA_DIR to app_local_data_dir()
+# (e.g. ~/.local/share/com.byqalam.app/ on Linux, AppData\Local\com.byqalam.app\ on Windows).
+# The dashboard calls the save_auth_token Tauri command after login, which writes
+# qalam_token.txt to this directory.
+# In dev mode (plain Python), DATA_DIR falls back to PLAYWRIGHT_DIR so the existing
+# qalam_token.txt workflow still works.
+_data_dir_env = os.environ.get('QALAM_DATA_DIR', '').strip()
+DATA_DIR = Path(_data_dir_env) if _data_dir_env else PLAYWRIGHT_DIR
+
+print(f"[CONFIG] DATA_DIR: {DATA_DIR}", flush=True)
 
 # Timezone — read from environment or default to Asia/Karachi
 # Tauri app will set QALAM_TIMEZONE after user sets it
@@ -74,17 +88,40 @@ def error(msg): log('ERROR', msg)
 
 # ── API Client ─────────────────────────────────────────────────
 def get_auth_token():
-    """Read current JWT token - refreshed by Tauri on each login."""
+    """Read current JWT token - refreshed dynamically on every API call.
+
+    Priority:
+    1. QALAM_AUTH_TOKEN env var (explicit override, e.g. CI/testing)
+    2. DATA_DIR/qalam_token.txt  — written by the Tauri desktop app after login
+    3. PLAYWRIGHT_DIR/qalam_token.txt — dev mode fallback (manual file)
+    """
     token = os.environ.get('QALAM_AUTH_TOKEN', '')
     if token:
         return token
 
-    token_file = PLAYWRIGHT_DIR / 'qalam_token.txt'
-    if token_file.exists():
+    # DATA_DIR is app_local_data_dir in the Tauri app (writable).
+    # The dashboard calls save_auth_token Tauri command after login,
+    # which writes the JWT here. Worker picks it up on the next poll.
+    data_token = DATA_DIR / 'qalam_token.txt'
+    if data_token.exists():
         try:
-            return token_file.read_text().strip()
+            t = data_token.read_text().strip()
+            if t:
+                return t
         except Exception:
             pass
+
+    # Dev fallback: plain token file in PLAYWRIGHT_DIR
+    if DATA_DIR != PLAYWRIGHT_DIR:
+        dev_token = PLAYWRIGHT_DIR / 'qalam_token.txt'
+        if dev_token.exists():
+            try:
+                t = dev_token.read_text().strip()
+                if t:
+                    return t
+            except Exception:
+                pass
+
     return ''
 
 def api_headers():
@@ -293,15 +330,17 @@ def publish_post(post):
             python_venv = PLAYWRIGHT_DIR / 'venv' / 'bin' / 'python'
             python_exec = python_venv if python_venv.exists() else Path(sys.executable)
 
-        print(f"[DEBUG] Using Python: {python_exec}", flush=True)
+        if _debug:
+            print(f"[DEBUG] Using Python: {python_exec}", flush=True)
 
         python_exec_path = str(python_exec)
         actions_path = str(PLAYWRIGHT_DIR / 'linkedin_actions.py')
 
-        print(f"[DEBUG] Python: {python_exec_path}", flush=True)
-        print(f"[DEBUG] Script: {actions_path}", flush=True)
-        print(f"[DEBUG] Script exists: {Path(actions_path).exists()}", flush=True)
-        print(f"[DEBUG] Python exists: {Path(python_exec_path).exists()}", flush=True)
+        if _debug:
+            print(f"[DEBUG] Python: {python_exec_path}", flush=True)
+            print(f"[DEBUG] Script: {actions_path}", flush=True)
+            print(f"[DEBUG] Script exists: {Path(actions_path).exists()}", flush=True)
+            print(f"[DEBUG] Python exists: {Path(python_exec_path).exists()}", flush=True)
 
         result = subprocess.run(
             [python_exec_path, actions_path],
@@ -312,9 +351,10 @@ def publish_post(post):
             cwd=str(PLAYWRIGHT_DIR)
         )
 
-        print(f"[DEBUG] Return code: {result.returncode}", flush=True)
-        print(f"[DEBUG] Stdout: {result.stdout[:500]}", flush=True)
-        print(f"[DEBUG] Stderr: {result.stderr[:500]}", flush=True)
+        if _debug:
+            print(f"[DEBUG] Return code: {result.returncode}", flush=True)
+            print(f"[DEBUG] Stdout: {result.stdout[:500]}", flush=True)
+            print(f"[DEBUG] Stderr: {result.stderr[:500]}", flush=True)
 
         action_result = {}
         for line in result.stdout.strip().split('\n'):
@@ -339,8 +379,9 @@ def publish_post(post):
         update_post_failed(post_id, retry_count)
     except Exception as e:
         error(f"EXCEPTION: {post_id[:8]}... — {e}")
-        import traceback
-        print(f"[DEBUG] Traceback: {traceback.format_exc()}", flush=True)
+        if _debug:
+            import traceback
+            print(f"[DEBUG] Traceback: {traceback.format_exc()}", flush=True)
         update_post_failed(post_id, retry_count)
     finally:
         cleanup_temp_images(image_paths)

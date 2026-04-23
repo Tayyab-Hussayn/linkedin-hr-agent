@@ -31,9 +31,10 @@ services:
       - DB_POSTGRESDB_PASSWORD=hragent123
       - GENERIC_TIMEZONE=UTC
       - N8N_ALLOW_EXEC=true
-      - N8N_WEBHOOK_URL=http://192.168.100.48:5678/
-      - WEBHOOK_URL=http://192.168.100.48:5678/
-      - N8N_EDITOR_BASE_URL=http://192.168.100.48:5678/
+      # Set N8N_PUBLIC_URL in .env for production (e.g. https://n8n.byqalam.com/)
+      - N8N_WEBHOOK_URL=${N8N_PUBLIC_URL:-http://localhost:5678/}
+      - WEBHOOK_URL=${N8N_PUBLIC_URL:-http://localhost:5678/}
+      - N8N_EDITOR_BASE_URL=${N8N_PUBLIC_URL:-http://localhost:5678/}
     volumes:
       - n8n_data:/home/node/.n8n
     ports:

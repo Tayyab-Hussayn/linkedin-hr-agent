@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { Eye, EyeOff } from 'lucide-react'
 import { api } from '@/lib/api'
 import { auth } from '@/lib/auth'
+import { saveTauriToken } from '@/lib/tauri'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -32,6 +33,8 @@ export default function LoginPage() {
           client_id: res.client_id,
           role: res.role
         })
+        // Save token for queue worker sidecar (Tauri desktop app only — no-op in browser)
+        saveTauriToken(res.token)
         // Fetch full profile
         try {
           const me = await api.getMe()

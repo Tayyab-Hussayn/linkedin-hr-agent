@@ -215,7 +215,9 @@ The Flask server is the **single API gateway**. All DB access goes through it.
 - `GET /api/niches` — Get available niches with defaults
 - `POST /api/generate-now` — Trigger n8n content generation webhook. Returns 403 if `auto_gen_enabled = false` for the client. Check this flag from DB before calling n8n.
 - `GET /api/events` — SSE stream for real-time updates
-- `POST /api/notify` — Called by n8n to broadcast events to dashboard
+- `POST /api/notify` — Called by n8n to broadcast events to dashboard. Requires `client_id` in body (returns 400 if missing). Requires `X-Qalam-Service-Token` header.
+- `GET /api/analytics/pillars` — Content pillar performance (topic_pillar, total, approved, rejected, approval_rate_pct)
+- `GET /api/analytics/daily?days=7` — Daily activity last N days (day, generated, published, rejected)
 
 ### Image Endpoints
 - `POST /api/posts/<post_id>/images` — Upload images (multipart/form-data, field: `images[]`). Max 4 images per post, 5MB each, JPEG/PNG/GIF only. Validates post ownership.
@@ -419,10 +421,29 @@ Tauri 2 wraps the Next.js dashboard as a native desktop app and bundles the queu
 ### Environment variables passed to sidecar (lib.rs):
 | Var | Source | Purpose |
 |-----|--------|---------|
-| `QALAM_API_URL` | env or fallback `http://localhost:5050` | Flask API endpoint |
+| `QALAM_API_URL` | `DATA_DIR/qalam_api_url.txt` → env var → `https://api.byqalam.com` | Flask API endpoint |
 | `QALAM_TIMEZONE` | system TZ detection: `TZ` env → `/etc/timezone` → `UTC` fallback | Worker scheduling timezone |
 | `QALAM_RESOURCES_DIR` | `app.path().resource_dir()` | Dir containing `linkedin_actions.py` + `humanizer.py` |
 | `QALAM_PYTHON` | prefers `playwright/venv/bin/python`, falls back to `which python3` | Python interpreter for LinkedIn actions |
+| `QALAM_DATA_DIR` | `app.path().app_local_data_dir()` | Writable dir for token + config files (see Auth Token below) |
+
+### Auth Token — how the worker gets its JWT
+
+The Tauri app does NOT pass a hardcoded token at startup (tokens expire). Instead:
+1. User logs in via the embedded dashboard
+2. Login page calls `saveTauriToken(token)` → invokes Rust command `save_auth_token`
+3. Rust writes token to `QALAM_DATA_DIR/qalam_token.txt`
+4. Worker reads token dynamically on every API call from `DATA_DIR/qalam_token.txt`
+5. On token refresh (re-login), file is overwritten → worker picks up new token within 60s
+
+**Data dir locations:**
+- Linux: `~/.local/share/com.byqalam.app/`
+- Windows: `C:\Users\{user}\AppData\Local\com.byqalam.app\`
+- macOS: `~/Library/Application Support/com.byqalam.app/`
+
+**Custom API URL:** dashboard stores URL in `localStorage('api_url')`. LayoutWrapper syncs it to `QALAM_DATA_DIR/qalam_api_url.txt` on mount via `saveTauriApiUrl`. Tauri reads this at next startup to set `QALAM_API_URL` for the worker.
+
+**Tauri helper:** `dashboard/src/lib/tauri.ts` — `saveTauriToken()`, `saveTauriApiUrl()`, `tauriInvoke()`. Uses `window.__TAURI_INTERNALS__` directly (no npm package needed).
 
 ### Python interpreter resolution (lib.rs):
 - Checks `<CARGO_MANIFEST_DIR>/../playwright/venv/bin/python` first — this venv has all deps (playwright, etc.)
@@ -582,6 +603,7 @@ Production Flask server requires these env vars:
 | Variable | Purpose | Default (dev only) |
 |----------|---------|-------------------|
 | `JWT_SECRET` | JWT signing key | `qalam-dev-secret-change-in-production` (prints warning) |
+| `N8N_BASE_URL` | n8n URL for content generation webhooks | `http://localhost:5678` |
 | `DB_HOST` | PostgreSQL host | `localhost` |
 | `DB_PORT` | PostgreSQL port | `5433` |
 | `DB_NAME` | Database name | `linkedin_agent` |

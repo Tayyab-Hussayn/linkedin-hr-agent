@@ -19,7 +19,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from flask import Flask, request, jsonify, send_file
 from werkzeug.utils import secure_filename
-from config import DB_CONFIG, CLIENT_ID, N8N_GENERATE_NOW_WEBHOOK, JWT_SECRET, JWT_EXPIRY_DAYS
+from config import DB_CONFIG, N8N_GENERATE_NOW_WEBHOOK, JWT_SECRET, JWT_EXPIRY_DAYS
 from prompt_builder import build_system_prompt, build_user_prompt, get_client_profile_summary, get_available_niches
 
 signal.signal(signal.SIGCHLD, signal.SIG_DFL)
@@ -426,22 +426,16 @@ def update_post_status(post_id, status):
     if not post_id:
         return
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        cur = conn.cursor()
         if status == 'published':
-            cur.execute(
+            db_query(
                 "UPDATE posts SET post_status = %s, published_at = NOW() WHERE id = %s",
-                (status, post_id)
+                [status, post_id], fetch=False
             )
         else:
-            cur.execute(
+            db_query(
                 "UPDATE posts SET post_status = %s WHERE id = %s",
-                (status, post_id)
+                [status, post_id], fetch=False
             )
-        conn.commit()
-        cur.close()
-        conn.close()
-        print(f"[DB] Updated post {post_id} status to {status}", file=sys.stderr)
     except Exception as e:
         print(f"[DB ERROR] {str(e)}", file=sys.stderr)
 
@@ -528,7 +522,7 @@ def execute():
 
 @app.route('/health', methods=['GET'])
 def health():
-    return jsonify({"status": "f**king ok", "service": "playwright-action-server"})
+    return jsonify({"status": "ok", "service": "qalam-api"})
 
 @app.route('/api/events', methods=['GET', 'OPTIONS'])
 def sse_stream():
@@ -712,6 +706,64 @@ def get_stats_internal(client_id=None):
 def get_stats():
     client_id = request.current_user['client_id']
     return get_stats_internal(client_id)
+
+
+# ═══════════════════════════════════════════
+# ANALYTICS — GET /api/analytics/pillars
+# Content pillar performance for Analytics page
+# ═══════════════════════════════════════════
+
+@app.route('/api/analytics/pillars', methods=['GET', 'OPTIONS'])
+@require_auth
+def analytics_pillars():
+    client_id = request.current_user['client_id']
+    rows = db_query("""
+        SELECT
+            topic_pillar,
+            COUNT(*) AS total,
+            COUNT(*) FILTER (WHERE approval_status = 'approved') AS approved,
+            COUNT(*) FILTER (WHERE approval_status = 'rejected') AS rejected,
+            ROUND(
+                100.0 * COUNT(*) FILTER (WHERE approval_status = 'approved')
+                / NULLIF(COUNT(*), 0)
+            )::int AS approval_rate_pct
+        FROM posts
+        WHERE client_id = %s
+            AND topic_pillar IS NOT NULL
+            AND topic_pillar <> ''
+        GROUP BY topic_pillar
+        ORDER BY total DESC
+    """, [client_id])
+    return cors_response({'status': 'ok', 'pillars': [dict(r) for r in rows]})
+
+
+# ═══════════════════════════════════════════
+# ANALYTICS — GET /api/analytics/daily
+# Daily activity for last N days for Analytics page
+# ═══════════════════════════════════════════
+
+@app.route('/api/analytics/daily', methods=['GET', 'OPTIONS'])
+@require_auth
+def analytics_daily():
+    client_id = request.current_user['client_id']
+    days = min(int(request.args.get('days', 7)), 90)
+    rows = db_query("""
+        SELECT
+            TO_CHAR(created_at AT TIME ZONE 'Asia/Karachi', 'Dy') AS day,
+            COUNT(*) AS generated,
+            COUNT(*) FILTER (WHERE post_status = 'published') AS published,
+            COUNT(*) FILTER (WHERE approval_status = 'rejected') AS rejected
+        FROM posts
+        WHERE client_id = %s
+            AND created_at >= NOW() - (%s * INTERVAL '1 day')
+        GROUP BY
+            TO_CHAR(created_at AT TIME ZONE 'Asia/Karachi', 'Dy'),
+            DATE_TRUNC('day', created_at AT TIME ZONE 'Asia/Karachi')
+        ORDER BY
+            DATE_TRUNC('day', created_at AT TIME ZONE 'Asia/Karachi')
+    """, [client_id, days])
+    return cors_response({'status': 'ok', 'activity': [dict(r) for r in rows]})
+
 
 # ═══════════════════════════════════════════
 # NEW ENDPOINT 3 — POST /api/approve
@@ -1266,7 +1318,9 @@ def notify_clients():
 
     body = request.get_json() or {}
     event_type = body.get('event', 'new_posts')
-    client_id = body.get('client_id', CLIENT_ID)
+    client_id = body.get('client_id')
+    if not client_id:
+        return cors_response({'status': 'error', 'message': 'client_id required'}, 400)
     count = body.get('count', 1)
 
     broadcast_event(event_type, {
@@ -1436,13 +1490,13 @@ def worker_mark_failed():
     else:
         # Schedule retry with backoff
         delay = backoff_minutes[min(retry_count, len(backoff_minutes) - 1)]
-        db_query(f"""
+        db_query("""
             UPDATE posts SET
                 post_status = 'draft',
                 retry_count = %s,
-                scheduled_for = NOW() + INTERVAL '{delay} minutes'
+                scheduled_for = NOW() + (%s * INTERVAL '1 minute')
             WHERE id = %s
-        """, [next_retry, post_id], fetch=False)
+        """, [next_retry, delay, post_id], fetch=False)
 
     return cors_response({'status': 'ok'})
 

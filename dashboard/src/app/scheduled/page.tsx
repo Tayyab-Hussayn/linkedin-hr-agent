@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
 import { Post } from '@/lib/types'
 import { useAppContext } from '@/context/AppContext'
-import { useSSE } from '@/hooks/useSSE'
 import { CalendarCheck, Clock, Trash2, Calendar } from 'lucide-react'
 import { cn, getPillarColor, formatRelativeTime } from '@/lib/utils'
 import { Sheet } from '@/components/ui/Sheet'
@@ -56,20 +55,10 @@ export default function ScheduledPage() {
   const [tick, setTick] = useState(0)
   const { showToast, setScheduledCount, refreshSignal } = useAppContext()
 
-  useSSE({
-    onPostApproved: () => {
-      // Post approved — refresh scheduled list
-      fetchScheduledPosts()
-    },
-    onPostRejected: () => {
-      // Post rejected — refresh scheduled list
-      fetchScheduledPosts()
-    },
-    onPublishNow: () => {
-      // Post published — refresh scheduled list
-      fetchScheduledPosts()
-    }
-  })
+  // Refresh when LayoutWrapper broadcasts an SSE event via refreshSignal
+  useEffect(() => {
+    if (refreshSignal > 0) fetchScheduledPosts()
+  }, [refreshSignal])
 
   function getDefaultSlotDisplay(): string {
     const now = new Date()

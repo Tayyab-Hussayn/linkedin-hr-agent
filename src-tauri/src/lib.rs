@@ -5,6 +5,33 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
 
+/// Save the user's JWT token to the writable data directory so the
+/// queue worker sidecar can authenticate with the Flask API.
+/// Called by the dashboard immediately after a successful login.
+#[tauri::command]
+fn save_auth_token(token: String, app: tauri::AppHandle) -> Result<(), String> {
+    let data_dir = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
+    std::fs::write(data_dir.join("qalam_token.txt"), token).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Save a custom API URL so the queue worker uses it on next launch.
+/// Called by the dashboard when the user configures a non-default server.
+#[tauri::command]
+fn save_api_url(url: String, app: tauri::AppHandle) -> Result<(), String> {
+    let data_dir = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
+    std::fs::write(data_dir.join("qalam_api_url.txt"), url).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Print only in debug builds
 macro_rules! debug_println {
     ($($arg:tt)*) => {
@@ -24,6 +51,7 @@ macro_rules! debug_eprintln {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![save_auth_token, save_api_url])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -109,8 +137,22 @@ pub fn run() {
             }
 
             // ── Worker environment setup ───────────────────────────────────
-            let api_url = std::env::var("QALAM_API_URL")
-                .unwrap_or_else(|_| "https://api.byqalam.com".to_string());
+            // Determine writable data directory (token + config files live here)
+            let data_dir = app
+                .path()
+                .app_local_data_dir()
+                .unwrap_or_else(|_| PathBuf::from("."));
+            let _ = std::fs::create_dir_all(&data_dir);
+
+            // Prefer saved API URL (written by dashboard) → env var → hardcoded default
+            let saved_api_url = std::fs::read_to_string(data_dir.join("qalam_api_url.txt"))
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+
+            let api_url = saved_api_url
+                .or_else(|| std::env::var("QALAM_API_URL").ok().filter(|s| !s.is_empty()))
+                .unwrap_or_else(|| "https://api.byqalam.com".to_string());
 
             let venv_python = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("../playwright/venv/bin/python");
@@ -142,16 +184,21 @@ pub fn run() {
                 })
                 .unwrap_or_else(|_| "UTC".to_string());
 
+            let data_dir_str = data_dir.to_string_lossy().to_string();
+
             debug_println!("[TAURI] API URL: {}", api_url);
             debug_println!("[TAURI] Python path: {}", python_path);
             debug_println!("[TAURI] Timezone: {}", system_tz);
+            debug_println!("[TAURI] Data dir: {}", data_dir_str);
 
             // ── STEP 4: Watchdog — restarts worker on crash ────────────────
+
             let app_handle_watchdog = app.handle().clone();
             let api_url_watchdog = api_url.clone();
             let python_path_watchdog = python_path.clone();
             let resources_dir_watchdog = resources_dir.clone();
             let system_tz_watchdog = system_tz.clone();
+            let data_dir_watchdog = data_dir_str.clone();
 
             tauri::async_runtime::spawn(async move {
                 // Exponential backoff: 5s, 10s, 30s, 60s, capped at 300s (5 min).
@@ -169,6 +216,7 @@ pub fn run() {
                                 .env("QALAM_TIMEZONE", &system_tz_watchdog)
                                 .env("QALAM_PYTHON", &python_path_watchdog)
                                 .env("QALAM_RESOURCES_DIR", &resources_dir_watchdog)
+                                .env("QALAM_DATA_DIR", &data_dir_watchdog)
                                 .spawn()
                             {
                                 Ok((mut rx, child)) => {
